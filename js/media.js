@@ -51,6 +51,63 @@
       if (item.sample) return;
       await media.del(item.id);
       await media.del(item.id + ':t');
+      if (item.remote && MT.sync.ready()) {
+        MT.sync.deleteFile(item.remote.path, item.remote.sha).catch(() => {});
+        if (item.remote.tpath) MT.sync.deleteFile(item.remote.tpath, item.remote.tsha).catch(() => {});
+      }
+    },
+
+    /* ---------- backup to the private GitHub data repository ---------- */
+    MAX_BACKUP: 50 * 1024 * 1024, // GitHub warns above 50 MB per file
+    /** Media on this device that isn't backed up yet. */
+    pendingBackup() {
+      const out = [];
+      (MT.store.state.jobFolders || []).forEach((f) => (f.media || []).forEach((m) => { if (!m.sample && !m.remote && !m.tooBig) out.push({ f, m }); }));
+      return out;
+    },
+    backupStats() {
+      let total = 0, done = 0;
+      (MT.store.state.jobFolders || []).forEach((f) => (f.media || []).forEach((m) => { if (m.sample) return; total++; if (m.remote) done++; }));
+      return { total, done, pending: media.pendingBackup().length };
+    },
+    async backupOne(f, m) {
+      const blob = await media.get(m.id);
+      if (!blob) return false; // added on another device that hasn't backed it up yet
+      if (blob.size > media.MAX_BACKUP) { m.tooBig = true; return false; }
+      const ext = (m.mime && m.mime.split('/')[1] || 'bin').replace('jpeg', 'jpg').replace('quicktime', 'mov').split(';')[0];
+      const base = 'media/' + f.id + '/' + m.id;
+      const main = await MT.sync.putFile(base + '.' + ext, blob, 'Job cam: ' + (f.name || '') + ' (' + m.name + ')');
+      m.remote = { path: main.path, sha: main.sha, at: new Date().toISOString() };
+      const thumb = await media.get(m.id + ':t');
+      if (thumb) { const t = await MT.sync.putFile(base + '-thumb.jpg', thumb, 'Job cam thumbnail'); m.remote.tpath = t.path; m.remote.tsha = t.sha; }
+      return true;
+    },
+    /** Uploads everything not yet backed up. progress(done, total) is optional. */
+    async backupAll(progress) {
+      if (!MT.sync.ready() || media.backingUp) return { done: 0, failed: 0 };
+      media.backingUp = true;
+      const list = media.pendingBackup();
+      let done = 0, failed = 0, lastErr = '';
+      try {
+        for (let i = 0; i < list.length; i++) {
+          if (progress) progress(i, list.length);
+          try { if (await media.backupOne(list[i].f, list[i].m)) { done++; MT.store.save(true); } } catch (e) { failed++; lastErr = e.message; if (/401|403|rejected/i.test(e.message)) break; }
+        }
+      } finally { media.backingUp = false; }
+      if (progress) progress(list.length, list.length);
+      return { done, failed, lastErr };
+    },
+    /** Downloads a backed-up file that isn't on this device yet, and keeps it here. */
+    async fetchRemote(m, thumb) {
+      if (!m.remote || !MT.sync.ready()) return null;
+      const key = thumb ? m.id + ':t' : m.id;
+      const path = thumb ? m.remote.tpath : m.remote.path;
+      if (!path) return null;
+      const blob = await MT.sync.getFile(path);
+      const typed = blob.type && blob.type !== 'application/octet-stream' ? blob : new Blob([blob], { type: thumb ? 'image/jpeg' : m.mime || 'application/octet-stream' });
+      await media.put(key, typed);
+      urlCache.delete(key);
+      return media.url(key);
     },
     async estimate() {
       if (!navigator.storage || !navigator.storage.estimate) return null;

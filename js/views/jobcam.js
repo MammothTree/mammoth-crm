@@ -40,6 +40,7 @@
         if (m.sample) src = media.sampleSVG(m);
         else src = (m.hasThumb && (await media.url(m.id + ':t'))) || (m.kind === 'image' ? await media.url(m.id) : null);
       } catch (e) { src = null; }
+      if (!src && m.remote && MT.sync.ready()) { try { src = await media.fetchRemote(m, !!m.remote.tpath); } catch (e) { src = null; } }
       if (src) { el.src = src; el.closest('.thumb').classList.add('loaded'); }
       else el.closest('.thumb').classList.add(m.kind === 'video' ? 'is-video-nothumb' : 'missing');
     });
@@ -73,6 +74,14 @@
     return f;
   }
 
+  function backupChip() {
+    const st = media.backupStats();
+    if (!st.total) return '';
+    if (!MT.sync.ready()) return '<a class="btn ghost sm" href="#integrations">Turn on photo backup</a>';
+    if (!st.pending) return '<span class="badge good">All ' + st.done + ' backed up to GitHub</span>';
+    return '<button class="btn ghost sm" id="jc-backup">' + (media.backingUp ? 'Backing up…' : 'Back up ' + st.pending + ' to GitHub') + '</button>';
+  }
+
   /* ================= Folder list ================= */
   function renderList(root) {
     const q = view.q.toLowerCase();
@@ -90,6 +99,7 @@
         ${custName ? `<button class="btn ghost sm" id="jc-clear-cust">Showing ${u.esc(custName)} only &times;</button>` : ''}
         <span class="spacer"></span>
         <span class="hint jc-storage" id="jc-storage"></span>
+        ${backupChip()}
         <button class="btn primary" id="jc-new">New job folder</button>
       </div>
       <div class="jc-statusbar" role="group" aria-label="Filter by status">
@@ -116,6 +126,13 @@
     const cc = u.qs('#jc-clear-cust', root);
     if (cc) cc.addEventListener('click', () => { view.customerId = ''; renderList(root); });
     u.qs('#jc-new', root).addEventListener('click', () => editFolder(null));
+    const bk = u.qs('#jc-backup', root);
+    if (bk) bk.addEventListener('click', async () => {
+      bk.disabled = true;
+      const r = await media.backupAll((i, n) => { bk.textContent = 'Backing up ' + Math.min(i + 1, n) + ' of ' + n + '…'; });
+      ui.toast(r.failed ? 'Backed up ' + r.done + ', ' + r.failed + ' failed: ' + r.lastErr : 'Backed up ' + r.done + (r.done === 1 ? ' file' : ' files') + ' to GitHub', r.failed ? 'err' : 'ok');
+      MT.app.render();
+    });
     u.qsa('.jc-card', root).forEach((c) => {
       const open = () => { view.folderId = c.dataset.id; view.filter = 'all'; MT.app.render(); window.scrollTo(0, 0); };
       c.addEventListener('click', open);
@@ -299,6 +316,7 @@
       store.log('jobcam', 'Added ' + ok + (ok === 1 ? ' file' : ' files') + ' to job cam "' + f.name + '"', { customerId: f.customerId, dealId: f.dealId });
       store.save();
       ui.toast('Added ' + ok + (ok === 1 ? ' file' : ' files'));
+      if (MT.sync.ready() && MT.sync.cfg().mediaAuto) media.backupAll().then((r) => { if (r.done) { ui.toast('Backed up ' + r.done + (r.done === 1 ? ' file' : ' files') + ' to GitHub'); if (MT.app.route === 'jobcam') MT.app.render(); } else if (r.failed) ui.toast('Photo backup failed: ' + r.lastErr, 'err'); });
     } else prog.hidden = true;
     errors.slice(0, 3).forEach((m) => ui.toast(m, 'err'));
   }
@@ -357,8 +375,12 @@
       const box = u.qs('#lb-media', wrap);
       let src = null;
       try { src = m.sample ? media.sampleSVG(m) : await media.url(m.id); } catch (e) { src = null; }
+      if (!src && m.remote && MT.sync.ready()) {
+        const bx = u.qs('#lb-media', wrap); if (bx) bx.innerHTML = '<span class="hint">Downloading from your GitHub backup…</span>';
+        try { src = await media.fetchRemote(m, false); } catch (e) { src = null; }
+      }
       if (!wrap.isConnected) return;
-      if (!src) box.innerHTML = '<p class="lb-missing">This file isn\'t stored on this device. Photos and videos stay on the device that added them.</p>';
+      if (!src) box.innerHTML = '<p class="lb-missing">' + (m.remote ? 'Could not download this file from GitHub. Check your connection and the GitHub key in Integrations.' : 'This file is only on the device that added it, and it hasn\'t been backed up to GitHub yet.') + '</p>';
       else if (m.kind === 'video') box.innerHTML = '<video controls playsinline preload="metadata" src="' + src + '"></video>';
       else box.innerHTML = '<img alt="' + u.esc(m.caption || m.name) + '" src="' + src + '">';
 

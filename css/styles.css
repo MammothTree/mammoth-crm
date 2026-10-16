@@ -777,6 +777,9 @@ mark { background: var(--warn-soft); color: var(--warn); border-radius: 3px; pad
 .mk-mini { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 0.8rem; color: #8f5c00; border: 2px dashed var(--hivis); flex: none; }
 .maybe-list .list-row { cursor: default; }
 
+details.adv { margin-top: 14px; }
+details.adv summary { cursor: pointer; color: var(--ink-2); font-weight: 600; font-size: 0.9rem; }
+
 /* ---------- Bookkeeping ---------- */
 .books-gate { max-width: 560px; margin: 24px auto; }
 .books-gate h2 { font-size: 1.5rem; font-weight: 800; font-stretch: 115%; margin-bottom: 8px; }

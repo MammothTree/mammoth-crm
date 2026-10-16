@@ -340,18 +340,25 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         </div>
         <div class="btn-row"><button class="btn primary" id="y-save">Save Yelp stats</button>${y.url ? `<a class="btn ghost" href="${u.esc(y.url)}" target="_blank" rel="noopener">Open Yelp page</a>` : ''}</div>`)}
 
-      ${card('github', 'GitHub backup & sync', gh.lastSync ? 'Synced' : 'Not set up', gh.lastSync ? 'good' : '', 'Keep your CRM data in a private GitHub repository, the same on every device.', `
-        <p class="hint">Create a fine-grained personal access token with <b>Contents: read and write</b> on only your private data repository.</p>
-        <div class="form-grid" id="st-gh">
-          <label class="field"><span>GitHub username or organization</span><input class="input" name="owner" value="${u.esc(gh.owner)}" autocomplete="off"></label>
+      ${card('github', 'GitHub backup & sync', gh.lastSync ? 'Connected' : 'Not set up on this device', gh.lastSync ? 'good' : 'warn', 'Your CRM data and job photos in your private GitHub repository, the same on every device.', `
+        <p>Data goes to your private repository <a href="https://github.com/${u.esc(gh.owner)}/${u.esc(gh.repo)}" target="_blank" rel="noopener"><b>${u.esc(gh.owner)}/${u.esc(gh.repo)}</b></a>. Each computer or phone needs an access key once:</p>
+        <ol class="steps">
+          <li><a class="btn ghost sm" href="https://github.com/settings/personal-access-tokens/new?name=${encodeURIComponent('Mammoth CRM')}&description=${encodeURIComponent('Sync for the Mammoth CRM app')}&target_name=${encodeURIComponent(gh.owner)}&expires_in=366&contents=write" target="_blank" rel="noopener">Create an access key on GitHub</a> (signed in as ${u.esc(gh.owner)}).</li>
+          <li>Under <b>Repository access</b>, choose <b>Only select repositories</b> → <b>${u.esc(gh.repo)}</b>. Under <b>Permissions → Repository permissions</b>, set <b>Contents</b> to <b>Read and write</b>. Select <b>Generate token</b> and copy it.</li>
+          <li>Paste it here: <div class="input-with-btn"><input class="input" type="password" id="gh-key" value="${u.esc(gh.token)}" placeholder="github_pat_…" autocomplete="off"><button class="btn primary sm" id="gh-connect">${gh.token ? 'Reconnect' : 'Connect this device'}</button></div>
+            <small class="hint">One key can be used on all your devices. Keep it private: anyone with it can read your CRM data.</small></li>
+        </ol>
+        <label class="check"><input type="checkbox" id="gh-auto" ${gh.auto ? 'checked' : ''}><span>Sync automatically: send changes a few seconds after saving, and get the latest whenever the app opens</span></label>
+        <label class="check" style="margin-top:6px"><input type="checkbox" id="gh-media" ${gh.mediaAuto ? 'checked' : ''}><span>Back up job cam photos and videos (up to 50 MB each) so every device can see them</span></label>
+        <p class="hint" id="gh-usage">${gh.token ? 'Checking storage…' : ''}</p>
+        <div class="btn-row"><button class="btn ghost" id="gh-pull" ${gh.token ? '' : 'disabled'}>Get latest from GitHub</button><button class="btn ghost" id="gh-push" ${gh.token ? '' : 'disabled'}>Send this device's data</button>${gh.token ? '<button class="btn danger-ghost" id="gh-forget">Disconnect this device</button>' : ''}</div>
+        <p id="sync-status" class="sync-status">${gh.lastSync ? 'Last synced ' + u.esc(new Date(gh.lastSync).toLocaleString()) : ''}</p>
+        <details class="adv"><summary>Advanced</summary><div class="form-grid" id="st-gh" style="margin-top:10px">
+          <label class="field"><span>GitHub account</span><input class="input" name="owner" value="${u.esc(gh.owner)}" autocomplete="off"></label>
           <label class="field"><span>Private data repository</span><input class="input" name="repo" value="${u.esc(gh.repo)}" autocomplete="off"></label>
           <label class="field"><span>Branch</span><input class="input" name="branch" value="${u.esc(gh.branch)}"></label>
           <label class="field"><span>File path</span><input class="input" name="path" value="${u.esc(gh.path)}"></label>
-          <label class="field span-2"><span>Access token</span><input class="input" type="password" name="token" value="${u.esc(gh.token)}" placeholder="github_pat_…" autocomplete="off"></label>
-          <label class="check span-2"><input type="checkbox" name="auto" ${gh.auto ? 'checked' : ''}><span>Push changes automatically a few seconds after each save</span></label>
-        </div>
-        <div class="btn-row"><button class="btn ghost" id="gh-save">Save connection</button><button class="btn ghost" id="gh-test">Test connection</button><span class="spacer"></span><button class="btn ghost" id="gh-pull">Pull from GitHub</button><button class="btn primary" id="gh-push">Push to GitHub</button></div>
-        <p id="sync-status" class="sync-status">${gh.lastSync ? 'Last synced ' + u.esc(new Date(gh.lastSync).toLocaleString()) : ''}</p>`)}
+        </div><div class="btn-row"><button class="btn ghost sm" id="gh-save">Save advanced settings</button></div></details>`)}
 
       ${card('connector', 'Live sync connector', 'Planned', '', 'Real-time Square payments, Yelp reviews, and instant website leads.', `
         <p>Square and Yelp only share data with a server, not with a CRM running in your browser. The next step is a small cloud connector: a free Cloudflare Worker that holds your Square and Yelp keys safely and passes new data to the CRM.</p>
@@ -425,41 +432,66 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
       store.save(true); view.render(root); ui.toast('Yelp stats saved');
     });
 
-    // github (moved from Settings)
+    // github
     const ghRead = () => {
-      const f = u.formData(u.qs('#st-gh', root));
       const c = sync.cfg();
-      const changedTarget = c.owner !== f.owner || c.repo !== f.repo || c.path !== f.path || c.branch !== f.branch;
-      Object.assign(c, f, { branch: f.branch || 'main', path: (f.path || 'data/crm-data.json').replace(/^\/+/, '') });
+      const adv = u.qs('#st-gh', root) ? u.formData(u.qs('#st-gh', root)) : {};
+      const changedTarget = ['owner', 'repo', 'path', 'branch'].some((k) => adv[k] !== undefined && adv[k] !== c[k]);
+      Object.assign(c, adv, { token: (u.qs('#gh-key', root).value || '').trim(), auto: u.qs('#gh-auto', root).checked, mediaAuto: u.qs('#gh-media', root).checked });
+      c.branch = c.branch || 'main'; c.path = (c.path || 'data/crm-data.json').replace(/^\/+/, '');
       if (changedTarget) { c.sha = ''; c.lastSync = ''; }
       sync.setCfg(c);
       return c;
     };
-    const need = () => { if (!sync.ready()) { ui.toast('Fill in username, repository, file path, and token first.', 'err'); return false; } return true; };
     const busy = (btn, p) => { btn.disabled = true; const t = btn.textContent; btn.textContent = 'Working…'; return p.finally(() => { btn.disabled = false; btn.textContent = t; }); };
-    on('#gh-save', 'click', () => { ghRead(); ui.toast('GitHub connection saved'); });
-    on('#gh-test', 'click', (ev) => {
-      ghRead(); if (!need()) return;
-      busy(ev.target, sync.test().then((r) => {
-        if (!r.canPush) sync.status('Connected to ' + r.fullName + ', but this token cannot write to it. Give it Contents: read and write.', true);
-        else sync.status('Connected to ' + r.fullName + (r.private ? ' (private)' : ' (PUBLIC: anyone can see your client data. Make this repository private.)'), !r.private);
-        if (r.canPush && r.private) ui.toast('Connection works');
-      }, (e) => sync.status(e.message, true)));
+    on('#gh-save', 'click', () => { ghRead(); ui.toast('Saved'); view.render(root); });
+    on('#gh-auto', 'change', () => { ghRead(); });
+    on('#gh-media', 'change', () => { ghRead(); });
+    on('#gh-connect', 'click', (ev) => {
+      const c = ghRead();
+      if (!c.token) { ui.toast('Paste the access key first.', 'err'); return; }
+      busy(ev.target, (async () => {
+        let r;
+        try { r = await sync.test(); } catch (e) { sync.status(e.message, true); return; }
+        if (!r.canPush) { sync.status('That key can see ' + r.fullName + ' but cannot save to it. Set Contents to "Read and write".', true); return; }
+        if (!r.private) sync.status('Warning: ' + r.fullName + ' is PUBLIC. Make it private on GitHub before syncing client data.', true);
+        const meta = await sync.remoteMeta(c).catch(() => null);
+        const finish = (msg) => { ui.toast(msg); view.render(root); if (c.mediaAuto) MT.media.backupAll(); };
+        if (!meta) { await sync.push(true); finish('Connected. This device\'s data is now on GitHub.'); return; }
+        if (c.sha === meta.sha) { finish('Connected'); return; }
+        if (store.state.demo) { await sync.pull(); MT.views.estimator.onDataReplaced(); finish('Connected. Loaded your data from GitHub.'); return; }
+        ui.modal({
+          title: 'Which data should this device use?', size: 'sm',
+          body: '<p>GitHub already has CRM data, and this device has its own. Choose which copy to keep. The other one is replaced.</p><p class="hint">Not sure? Download a backup of this device first (Settings → Backups).</p>',
+          actions: [
+            { label: 'Keep GitHub\'s copy', kind: 'primary', onClick: () => { sync.pull().then(() => { MT.views.estimator.onDataReplaced(); finish('Loaded your data from GitHub'); }, (e) => sync.status(e.message, true)); } },
+            { label: 'Keep this device\'s copy', kind: 'ghost', onClick: () => { sync.push(true).then(() => finish('This device\'s data is now on GitHub'), (e) => sync.status(e.message, true)); } },
+          ],
+        });
+      })());
     });
-    const doPull = () => sync.pull().then(() => { MT.views.estimator.onDataReplaced(); ui.toast('Pulled latest data from GitHub'); }, (e) => sync.status(e.message, true));
+    const doPull = () => sync.pull().then(() => { MT.views.estimator.onDataReplaced(); ui.toast('Loaded the latest data from GitHub'); }, (e) => sync.status(e.message, true));
     on('#gh-push', 'click', (ev) => {
-      ghRead(); if (!need()) return;
-      busy(ev.target, sync.push(false).then(() => { sync.status('Pushed to GitHub ' + new Date().toLocaleTimeString()); ui.toast('Pushed to GitHub'); }, (e) => {
+      ghRead();
+      busy(ev.target, sync.push(false).then(() => { sync.status('Sent to GitHub ' + new Date().toLocaleTimeString()); ui.toast('Sent to GitHub'); }, (e) => {
         if (e.conflict) {
           ui.modal({ title: 'GitHub has newer data', size: 'sm', body: '<p>' + u.esc(e.message) + '</p>', actions: [
             { label: 'Cancel' },
-            { label: 'Pull instead', kind: 'ghost', onClick: () => doPull() },
-            { label: 'Overwrite GitHub', kind: 'danger', onClick: () => { sync.push(true).then(() => { sync.status('Pushed to GitHub ' + new Date().toLocaleTimeString()); ui.toast('Pushed to GitHub'); }, (er) => sync.status(er.message, true)); } },
+            { label: 'Get latest instead', kind: 'ghost', onClick: () => doPull() },
+            { label: 'Overwrite GitHub', kind: 'danger', onClick: () => { sync.push(true).then(() => ui.toast('Sent to GitHub'), (er) => sync.status(er.message, true)); } },
           ] });
         } else sync.status(e.message, true);
       }));
     });
-    on('#gh-pull', 'click', () => { ghRead(); if (!need()) return; ui.confirm('Pull from GitHub?', 'This replaces the data in this browser with the copy on GitHub. Download a backup first if you are unsure.', 'Pull and replace', () => { doPull(); }); });
+    on('#gh-pull', 'click', () => { ghRead(); ui.confirm('Get the latest from GitHub?', 'This replaces the data on this device with the copy on GitHub.', 'Get latest', () => { doPull(); }); });
+    on('#gh-forget', 'click', () => ui.confirm('Disconnect this device?', 'The access key is removed from this device. Your data stays here and on GitHub.', 'Disconnect', () => { const c = sync.cfg(); c.token = ''; c.sha = ''; c.lastSync = ''; c.dirty = false; sync.setCfg(c); view.render(root); }));
+    if (sync.ready() && u.qs('#gh-usage', root)) {
+      sync.repoSizeMB().then((mb) => {
+        const el = u.qs('#gh-usage', root); if (!el) return;
+        const st = MT.media.backupStats();
+        el.textContent = (mb == null ? '' : 'Using about ' + (mb < 1 ? '<1' : Math.round(mb)) + ' MB on GitHub (keep it under about 5,000 MB). ') + (st.total ? st.done + ' of ' + st.total + ' photos and videos backed up.' : '');
+      });
+    }
   };
 
   view.pullLeads = pullLeads;

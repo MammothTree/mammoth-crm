@@ -1,5 +1,18 @@
-# Local backups downloaded from the app contain customer data
+# This repository is PUBLIC. Never commit client data, bank files, or backups.
+# Backups and exports downloaded from the app
 mammoth-crm-backup-*.json
 mammoth-customers-*.csv
+clients-*.csv
+transactions-*.csv
+profit-and-loss-*.csv
+*.json
+!manifest.webmanifest
+# Bank and accounting exports
+*.qfx
+*.ofx
+*.qbo
+*.csv
+# System files
 .DS_Store
 Thumbs.db
+desktop.ini

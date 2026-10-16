@@ -98,6 +98,16 @@
     window.addEventListener('resize', u.debounce(() => { if (['dashboard', 'routes'].includes(app.route)) app.render(); }, 250));
     onHash();
     MT.lock.init();
+    // GitHub sync: catch up when the app opens, reconnects, or comes back to the foreground (at most once a minute).
+    let lastSync = 0;
+    const catchUp = () => {
+      if (!MT.sync.ready() || Date.now() - lastSync < 60000 || navigator.onLine === false) return;
+      lastSync = Date.now();
+      MT.sync.autoSync().then(() => { if (MT.sync.cfg().mediaAuto) return MT.media.backupAll(); }).catch(() => { /* will retry next time */ });
+    };
+    setTimeout(catchUp, 1500);
+    window.addEventListener('online', catchUp);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') catchUp(); });
     // Website leads: check on open, then every 10 minutes while the CRM is open.
     if (MT.views.integrations && MT.views.integrations.autoPull) {
       setTimeout(() => MT.views.integrations.autoPull(), 4000);

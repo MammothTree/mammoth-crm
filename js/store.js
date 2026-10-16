@@ -453,8 +453,10 @@
      GitHub REST "contents" API. The token lives only in this browser. */
   const sync = {
     cfg() {
-      try { return Object.assign({ owner: '', repo: '', branch: 'main', path: 'data/crm-data.json', token: '', auto: false, sha: '', lastSync: '' }, JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')); }
-      catch (e) { return { owner: '', repo: '', branch: 'main', path: 'data/crm-data.json', token: '', auto: false, sha: '', lastSync: '' }; }
+      // Defaults point at the business's private data repository, so a new device only needs an access key.
+      const def = { owner: 'MammothTree', repo: 'mammoth-crm-data', branch: 'main', path: 'data/crm-data.json', token: '', auto: true, mediaAuto: true, sha: '', lastSync: '' };
+      try { return Object.assign(def, JSON.parse(localStorage.getItem(SYNC_KEY) || '{}')); }
+      catch (e) { return def; }
     },
     setCfg(c) { localStorage.setItem(SYNC_KEY, JSON.stringify(c)); },
     ready() { const c = this.cfg(); return !!(c.owner && c.repo && c.token && c.path); },
@@ -478,7 +480,23 @@
       const j = await r.json();
       return { private: j.private, fullName: j.full_name, canPush: !!(j.permissions && j.permissions.push) };
     },
-    async push(force) {
+    /** Every write to GitHub goes through one queue (each write is a commit; parallel commits collide), with retries for brief conflicts. */
+    queue: Promise.resolve(),
+    serial(fn) {
+      const run = async () => {
+        for (let i = 0; ; i++) {
+          try { return await fn(); } catch (e) {
+            if (i < 3 && !e.conflict && /\(409\)|\(422\)/.test(e.message)) { await new Promise((r) => setTimeout(r, 800 * (i + 1))); continue; }
+            throw e;
+          }
+        }
+      };
+      const p = sync.queue.then(run, run);
+      sync.queue = p.catch(() => {});
+      return p;
+    },
+    push(force) { return sync.serial(() => sync.pushNow(force)); },
+    async pushNow(force) {
       const c = this.cfg();
       const meta = await this.remoteMeta(c);
       if (meta && c.sha && meta.sha !== c.sha && !force) {
@@ -497,6 +515,7 @@
       const j = await r.json();
       c.sha = j.content.sha;
       c.lastSync = new Date().toISOString();
+      c.dirty = false;
       this.setCfg(c);
       return c;
     },
@@ -510,18 +529,73 @@
       if (!data || !data.version) throw new Error('The file on GitHub is not valid CRM data.');
       c.sha = meta.sha;
       c.lastSync = new Date().toISOString();
+      c.dirty = false;
       this.setCfg(c);
       this.suspend = true;
       store.replace(data);
       this.suspend = false;
       return c;
     },
-    onLocalSave: u.debounce(function () {
-      if (sync.suspend) return;
+    /** Called on every save: marks this device as having unsent changes, then pushes a few seconds later. */
+    onLocalSave() {
+      if (sync.suspend || !sync.ready()) return;
       const c = sync.cfg();
-      if (!c.auto || !sync.ready()) return;
-      sync.push(false).then(() => sync.status('Synced to GitHub'), (e) => sync.status('Sync failed: ' + e.message, true));
+      if (!c.dirty) { c.dirty = true; sync.setCfg(c); }
+      sync.pushSoon();
+    },
+    pushSoon: u.debounce(function () {
+      const c = sync.cfg();
+      if (!c.auto || !sync.ready() || sync.busy) return;
+      sync.busy = true;
+      sync.push(false).then(() => sync.status('Synced to GitHub ' + new Date().toLocaleTimeString()), (e) => {
+        if (e.conflict) sync.status('Another device changed the data. Open Integrations → GitHub to pull the newer copy.', true);
+        else sync.status('Sync failed: ' + e.message, true);
+      }).finally(() => { sync.busy = false; });
     }, 4000),
+    /** On opening the app: take newer data from GitHub, or send this device's unsent changes. */
+    async autoSync() {
+      if (!sync.ready()) return 'off';
+      const c = sync.cfg();
+      let meta;
+      try { meta = await sync.remoteMeta(c); } catch (e) { return 'offline'; }
+      if (!meta) { if (c.auto) { await sync.push(true); return 'pushed'; } return 'empty'; }
+      if (meta.sha === c.sha) { if (c.dirty && c.auto) { await sync.push(false); return 'pushed'; } return 'same'; }
+      if (!c.dirty) { await sync.pull(); MT.ui.toast('Updated with the latest data from GitHub'); return 'pulled'; }
+      sync.status('This device and GitHub both have changes. Open Integrations → GitHub to choose which to keep.', true);
+      return 'conflict';
+    },
+    /* ---------- files (job cam photos and videos) in the data repository ---------- */
+    fileUrl(c, path) { return 'https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo) + '/contents/' + path.split('/').map(encodeURIComponent).join('/'); },
+    putFile(path, blob, message) { return sync.serial(() => sync.putFileNow(path, blob, message)); },
+    async putFileNow(path, blob, message) {
+      const c = this.cfg();
+      const content = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(new Error('Could not read the file.')); r.readAsDataURL(blob); });
+      let sha;
+      const head = await fetch(this.fileUrl(c, path) + '?ref=' + encodeURIComponent(c.branch), { headers: this.headers(c), cache: 'no-store' });
+      if (head.ok) sha = (await head.json()).sha;
+      const r = await fetch(this.fileUrl(c, path), { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, this.headers(c)), body: JSON.stringify({ message: message || 'Job photo ' + path, content, branch: c.branch, sha }) });
+      if (!r.ok) throw new Error(await errText(r));
+      const j = await r.json();
+      return { path, sha: j.content.sha };
+    },
+    async getFile(path) {
+      const c = this.cfg();
+      const r = await fetch(this.fileUrl(c, path) + '?ref=' + encodeURIComponent(c.branch), { headers: this.headers(c, true), cache: 'no-store' });
+      if (!r.ok) throw new Error(await errText(r));
+      return await r.blob();
+    },
+    deleteFile(path, sha) { return sync.serial(() => sync.deleteFileNow(path, sha)); },
+    async deleteFileNow(path, sha) {
+      const c = this.cfg();
+      if (!sha) { const h = await fetch(this.fileUrl(c, path) + '?ref=' + encodeURIComponent(c.branch), { headers: this.headers(c), cache: 'no-store' }); if (!h.ok) return; sha = (await h.json()).sha; }
+      await fetch(this.fileUrl(c, path), { method: 'DELETE', headers: Object.assign({ 'Content-Type': 'application/json' }, this.headers(c)), body: JSON.stringify({ message: 'Remove ' + path, sha, branch: c.branch }) });
+    },
+    async repoSizeMB() {
+      const c = this.cfg();
+      const r = await fetch('https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo), { headers: this.headers(c), cache: 'no-store' });
+      if (!r.ok) return null;
+      return (await r.json()).size / 1024;
+    },
     status(msg, err) {
       const el = document.getElementById('sync-status');
       if (el) { el.textContent = msg; el.className = 'sync-status ' + (err ? 'err' : 'ok'); }

@@ -96,8 +96,9 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h3>Next step: live shared data</h3>${ui.badge('Planned', '')}</div>
-        <p>For everyone's phone to show the same schedule, clients, and hours instantly, with each crew member signing in, the CRM needs a small online database. It's free to start (Cloudflare or Supabase) and needs one account in your business's name. When you're ready, ask Claude to "set up the shared database and crew logins". Your data moves over from this computer.</p>
+        <div class="panel-head"><h3>Share live data between devices</h3>${MT.sync.ready() ? ui.badge('This device is connected', 'good') : ui.badge('Not connected', 'warn')}</div>
+        <p>Connect a phone or computer in <a href="#integrations">Integrations → GitHub backup &amp; sync</a> with your access key. It then gets the latest schedule, clients, and photos whenever it opens, and sends changes back within seconds.</p>
+        <p class="hint"><b>Who gets the key:</b> anyone with it can see all CRM data, including bookkeeping. Give it to yourself and the people you trust with everything. For other crew members, use the day links above. They only see their own stops.</p>
       </section>`;
 
     if (hosted()) {
