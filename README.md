@@ -32,7 +32,7 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 |---|---|
 | **Sales hub** | A time bar (this month, last month, quarter, year to date, last 12 months, last year, or custom dates) controls the KPIs: revenue paid, outstanding, estimates, and close rate, each compared with the previous period. It also shows profit on jobs won, the sales goal growth rings, upcoming jobs, follow-ups, and recent activity. **Sales goal** sets your annual goal with seasonal monthly targets. |
 | **Leads** | Drag-and-drop deal board: New Lead → Site Visit → Estimate Sent → Negotiating → Won / Lost. The deal window holds crew, start time, job length, payments, job cost, and the invoice. |
-| **Clients** | Client list with lifetime value. Each client card shows deals, estimates, invoices, notes, and activity. |
+| **Clients** | Client list with lifetime value. **Import clients** brings in a list pasted from Google Sheets, or a CSV or Excel file. Columns are matched automatically and existing clients are skipped or have missing details filled in. Each client card shows deals, estimates, invoices, notes, and activity. |
 | **Estimates** | Price book items, add-ons (cranes, subs, rentals), crew hours, equipment, and site difficulty. Shows your real cost and margin, and prints with your logo. |
 | **Invoices** | Turn finished jobs into invoices, record partial or full payments, print with a "Paid" stamp, copy a payment reminder, or void an invoice. |
 | **Job cam** | Photo and video folders per job, with status and before, during, or after labels. Backed up to GitHub when a device is connected. |

@@ -780,6 +780,10 @@ mark { background: var(--warn-soft); color: var(--warn); border-radius: 3px; pad
 details.adv { margin-top: 14px; }
 details.adv summary { cursor: pointer; color: var(--ink-2); font-weight: 600; font-size: 0.9rem; }
 
+.imp-tabs { margin-bottom: 12px; }
+.imp-paste { font: 0.85rem/1.4 ui-monospace, Consolas, monospace; white-space: pre; overflow: auto; }
+.imp-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; }
+
 /* ---------- Bookkeeping ---------- */
 .books-gate { max-width: 560px; margin: 24px auto; }
 .books-gate h2 { font-size: 1.5rem; font-weight: 800; font-stretch: 115%; margin-bottom: 8px; }

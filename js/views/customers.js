@@ -25,6 +25,7 @@
         <select class="input" id="cu-type" aria-label="Customer type">${u.options(['Residential', 'Commercial'], view.type, 'All clients')}</select>
         <select class="input" id="cu-sort" aria-label="Sort">${u.options([{ value: 'name', label: 'Sort by name' }, { value: 'ltv', label: 'Sort by lifetime value' }, { value: 'recent', label: 'Sort by recent activity' }], view.sort)}</select>
         <span class="spacer"></span>
+        <button class="btn ghost" id="cu-import">Import clients</button>
         <button class="btn primary" id="cu-new">Add client</button>
       </div>
       <section class="panel flush"><div class="table-wrap"><table class="table">
@@ -48,6 +49,7 @@
     u.qs('#cu-type', root).addEventListener('change', (e) => { view.type = e.target.value; view.render(root); });
     u.qs('#cu-sort', root).addEventListener('change', (e) => { view.sort = e.target.value; view.render(root); });
     u.qs('#cu-new', root).addEventListener('click', () => view.edit(null));
+    u.qs('#cu-import', root).addEventListener('click', () => MT.clientImport.open());
     u.qsa('tr[data-id]', root).forEach((tr) => tr.addEventListener('click', () => view.detail(tr.dataset.id)));
   };
 
