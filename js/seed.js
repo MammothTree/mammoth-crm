@@ -351,7 +351,7 @@
       updatedAt: new Date().toISOString(),
       settings: {
         company: { name: 'Mammoth Tree Service', shortName: 'Mammoth', tagline: 'Tree Service CRM', owner: 'Owner', phone: '(555) 410-8733', email: 'info@mammoth-tree.com', address: '', yardAddress: '', website: 'mammoth-tree.com', license: '' },
-        branding: { logo: '', primary: '#24563a', accent: '#e2a400', sidebar: '#2e2620', headings: 'wide', preset: 'forest' },
+        branding: { logo: 'icons/logo-navy.png', primary: '#02133b', accent: '#a6a6a6', sidebar: '#02133b', headings: 'wide', preset: 'mammoth' },
         taxRate: 0,
         estimateValidDays: 30,
         estimateFooter: 'Thank you for the opportunity to earn your business. Fully insured. ISA Certified Arborist on staff.',

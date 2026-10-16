@@ -154,6 +154,9 @@
     // Bookkeeping was added later.
     if (!data.books) { if (data.demo) MT.seedBooks(data); else data.books = { accounts: [], txns: [], rules: [], imports: [] }; }
     data.settings.branding = Object.assign({}, base.settings.branding, (data.settings || {}).branding || {});
+    // Untouched default branding switches to the Mammoth logo and navy. Custom choices are never changed.
+    const bb = data.settings.branding;
+    if (bb.preset === 'forest' && !bb.logo && bb.primary === '#24563a') Object.assign(bb, { logo: 'icons/logo-navy.png', primary: '#02133b', accent: '#a6a6a6', sidebar: '#02133b', preset: 'mammoth' });
     const bi = MT.defaultIntegrations();
     data.integrations = data.integrations || {};
     Object.keys(bi).forEach((k) => { data.integrations[k] = Object.assign({}, bi[k], data.integrations[k] || {}); });

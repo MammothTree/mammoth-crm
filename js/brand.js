@@ -5,7 +5,8 @@
   const u = MT.u;
 
   const PRESETS = [
-    { id: 'forest', name: 'Forest (default)', primary: '#24563a', accent: '#e2a400', sidebar: '#2e2620' },
+    { id: 'mammoth', name: 'Mammoth navy', primary: '#02133b', accent: '#a6a6a6', sidebar: '#02133b' },
+    { id: 'forest', name: 'Forest', primary: '#24563a', accent: '#e2a400', sidebar: '#2e2620' },
     { id: 'redwood', name: 'Redwood', primary: '#8c2f1c', accent: '#d9a441', sidebar: '#2b1d18' },
     { id: 'pine', name: 'Pine & steel', primary: '#1f4e5f', accent: '#f2a72c', sidebar: '#1b2629' },
     { id: 'safety', name: 'Safety orange', primary: '#c4501b', accent: '#2f3b45', sidebar: '#222a31' },
