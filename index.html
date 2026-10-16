@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mammoth CRM</title>
+  <meta name="description" content="Customer, estimate, job, and sales tracking for Mammoth Tree Service.">
+  <meta name="theme-color" content="#2e2620">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324563a'/%3E%3Cg fill='none' stroke='%23e2a400' stroke-width='2'%3E%3Ccircle cx='16' cy='16' r='4'/%3E%3Ccircle cx='16' cy='16' r='8.5'/%3E%3Ccircle cx='16' cy='16' r='12.5' stroke='%23f2f4f0'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mammoth">
+</head>
+<body>
+  <a class="skip" href="#view">Skip to content</a>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand">
+        <span id="brand-mark-wrap" class="brand-mark-wrap" data-default='<svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2.2" opacity=".45"/><circle cx="20" cy="20" r="12.5" fill="none" stroke="currentColor" stroke-width="2.2" opacity=".7"/><circle cx="20" cy="20" r="7" fill="none" stroke="var(--hivis)" stroke-width="2.4"/><circle cx="20" cy="20" r="2.4" fill="var(--hivis)"/></svg>'></span>
+        <div class="brand-text"><div class="brand-name" id="brand-name">Mammoth</div><div class="brand-sub" id="brand-sub">Tree Service CRM</div></div>
+      </div>
+      <nav class="nav" aria-label="Main">
+        <div class="nav-group" role="group" aria-labelledby="ng-business">
+          <div class="nav-heading" id="ng-business">Business</div>
+          <a href="#dashboard"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Sales hub</a>
+          <a href="#pipeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/></svg>Leads</a>
+          <a href="#customers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.3 3.3 0 0 1 0 6.4M18 14.8c1.8.6 3 2.4 3.5 5.2"/></svg>Clients</a>
+          <a href="#estimator"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7.5h7M8.5 11.5h2M13.5 11.5h2M8.5 15h2M13.5 15h2M8.5 18h2M13.5 18h2"/></svg>Estimates</a>
+          <a href="#invoices"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>Invoices</a>
+          <a href="#jobcam"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8.5h3.2l1.8-3h7l1.8 3h3.2v11h-17z"/><circle cx="12" cy="13.5" r="3.6"/></svg>Job cam</a>
+          <a href="#jobcost"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/></svg>Job cost</a>
+          <a href="#time"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></svg>Time tracking</a>
+          <a href="#calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendar</a>
+          <a href="#routes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 18h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16"/></svg>Route planner</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="ng-tools">
+          <div class="nav-heading" id="ng-tools">Tools</div>
+          <a href="#books"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19v15H5.5A1.5 1.5 0 0 0 4 19.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H19v-3M9 7.5h6M9 11h6"/></svg>Bookkeeping</a>
+          <a href="#overhead"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M16.5 7.2c-.8-1.3-2.4-2-4.5-2-2.6 0-4.3 1.3-4.3 3.2 0 4.5 9 2.4 9 7 0 2-1.9 3.4-4.7 3.4-2.3 0-4-.9-4.8-2.3"/></svg>Overhead &amp; pricing</a>
+          <a href="#templates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5 12 12l8-5.5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>Templates</a>
+        </div>
+        <div class="nav-group" role="group" aria-labelledby="ng-account">
+          <div class="nav-heading" id="ng-account">Account</div>
+          <a href="#branding"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.3-1-1.6-1-2.6 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.3"/><circle cx="10.5" cy="7" r="1.3"/><circle cx="15.5" cy="7.5" r="1.3"/></svg>Branding</a>
+          <a href="#integrations"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg>Integrations</a>
+          <a href="#app"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>Phone app</a>
+          <a href="#settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>Settings</a>
+        </div>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <header class="top">
+        <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div class="top-title">
+          <h1 id="page-title">Sales hub</h1>
+          <p id="today" class="today"></p>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost sm crew-only" id="crew-home">My day</button>
+          <button class="btn ghost sm crew-only" id="crew-exit">Exit crew view</button>
+          <button class="btn ghost sm" id="q-customer">Add client</button>
+          <button class="btn ghost sm" id="q-deal">New lead</button>
+          <button class="btn primary sm" id="q-estimate">New estimate</button>
+          <button class="icon-btn" id="lock-btn" aria-label="Lock the CRM" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+          <button class="icon-btn" id="theme-btn" aria-label="Switch light or dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+        </div>
+      </header>
+      <div class="demo-note" id="demo-note" hidden>You're looking at sample data. When you're ready for real clients, go to <a href="#settings">Settings</a> and clear the demo data.</div>
+      <main id="view" tabindex="-1"></main>
+    </div>
+  </div>
+  <div class="nav-scrim" onclick="document.body.classList.remove('nav-open')"></div>
+  <div id="print-root" aria-hidden="true"></div>
+  <div id="lock" class="lock" hidden></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/seed.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/media.js"></script>
+  <script src="js/print.js"></script>
+  <script src="js/brand.js"></script>
+  <script src="js/lock.js"></script>
+  <script src="js/crewlink.js"></script>
+  <script src="js/views/dashboard.js"></script>
+  <script src="js/views/customers.js"></script>
+  <script src="js/views/estimator.js"></script>
+  <script src="js/views/invoices.js"></script>
+  <script src="js/views/pipeline.js"></script>
+  <script src="js/views/jobcam.js"></script>
+  <script src="js/views/jobcost.js"></script>
+  <script src="js/views/timetrack.js"></script>
+  <script src="js/views/calendar.js"></script>
+  <script src="js/views/routes.js"></script>
+  <script src="js/views/templates.js"></script>
+  <script src="js/views/overhead.js"></script>
+  <script src="js/views/books.js"></script>
+  <script src="js/views/branding.js"></script>
+  <script src="js/views/integrations.js"></script>
+  <script src="js/views/phoneapp.js"></script>
+  <script src="js/views/crew.js"></script>
+  <script src="js/views/settings.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

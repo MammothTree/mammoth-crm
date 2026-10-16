@@ -1,0 +1,21 @@
+{
+  "name": "Mammoth Tree Service CRM",
+  "short_name": "Mammoth",
+  "description": "Clients, estimates, jobs, crew time, and routes for Mammoth Tree Service.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#2e2620",
+  "theme_color": "#2e2620",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "My day (crew view)", "short_name": "My day", "url": "./index.html#crew", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Time tracking", "url": "./index.html#time", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "New estimate", "url": "./index.html#estimator", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

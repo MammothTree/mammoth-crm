@@ -1,0 +1,5 @@
+# Local backups downloaded from the app contain customer data
+mammoth-crm-backup-*.json
+mammoth-customers-*.csv
+.DS_Store
+Thumbs.db
