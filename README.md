@@ -39,6 +39,7 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 | **Job cost** | Estimated cost compared with actual cost (tracked crew time + an overhead share + job expenses). Flags jobs that ran over budget. |
 | **Time tracking** | Clock in and out (one person or a whole crew), weekly timesheet, labor cost, overtime, and importing hours texted from crew phones. |
 | **Calendar** | Month and week views of jobs, estimate visits, and events. Drag to reschedule, filter by crew. |
+| **Partner finder** | Finds the top 25 landscapers, fence companies, pool builders, home builders, developers, and concrete companies (or any category you add) near you on Google Maps, ranked by rating and review count. Runs a contractor-rate outreach campaign: status, follow-ups, notes, one-tap call/text/email with your offer message, and partners become commercial clients. Uses the Google API key from Integrations. Per Google's terms, the campaign saves only each business's Google ID, name, and your notes; phone, website, and ratings load live. |
 | **Route planner** | A street map with numbered, labeled stops and the route along real roads. It shows nearby jobs you could add, the best order for each person's day, miles, drive time, fuel cost, and savings, and opens the route in Google Maps. |
 
 ### Tools

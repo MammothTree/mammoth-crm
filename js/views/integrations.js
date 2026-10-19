@@ -515,5 +515,6 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
 
   view.pullLeads = pullLeads;
   view.secrets = secrets;
+  view.loadMaps = loadMaps;
   MT.views.integrations = view;
 })();

@@ -16,7 +16,7 @@
     { id: 'lost', name: 'Lost', prob: 0 },
   ];
   const OPEN_STAGES = ['lead', 'contacted', 'estimate', 'negotiating'];
-  const SOURCES = ['Google', 'Referral', 'Repeat Customer', 'Facebook', 'Yard Sign', 'Nextdoor', 'Storm Canvass', 'Website', 'Other'];
+  const SOURCES = ['Google', 'Referral', 'Repeat Customer', 'Facebook', 'Yard Sign', 'Nextdoor', 'Storm Canvass', 'Website', 'Contractor partner', 'Other'];
   // Marketing channel: where an online lead actually came from. Kept separate from "source" so existing reports don't change.
   const CHANNELS = [
     { id: 'organic', label: 'Google search (organic)' },
@@ -134,6 +134,7 @@
     },
   };
   MT.store = store;
+  store.defaultPartners = () => defaultPartners();
 
   /* ---------- sample data removal ----------
      The demo data uses short ids ("c4", "d12", "jf3"). Everything created in the app gets an id with an
@@ -234,7 +235,32 @@
     data.integrations = data.integrations || {};
     Object.keys(bi).forEach((k) => { data.integrations[k] = Object.assign({}, bi[k], data.integrations[k] || {}); });
     if (!data.integrations.website.key) data.integrations.website.key = bi.website.key;
+    // Partner finder was added later.
+    const bp = defaultPartners();
+    data.partners = Object.assign({}, bp, data.partners || {});
+    if (!Array.isArray(data.partners.list)) data.partners.list = [];
+    if (!Array.isArray(data.partners.categories) || !data.partners.categories.length) data.partners.categories = bp.categories;
     return data;
+  }
+
+  /** Partner finder: complementary business categories and the contractor-rate outreach messages. */
+  function defaultPartners() {
+    return {
+      rate: 10,
+      radius: 25,
+      categories: [
+        { id: 'landscapers', name: 'Landscapers', query: 'landscaping company' },
+        { id: 'fence', name: 'Fence companies', query: 'fence contractor' },
+        { id: 'pools', name: 'Pool builders', query: 'swimming pool builder' },
+        { id: 'builders', name: 'Home builders', query: 'home builder' },
+        { id: 'developers', name: 'Developers', query: 'real estate developer' },
+        { id: 'concrete', name: 'Concrete companies', query: 'concrete contractor' },
+      ],
+      list: [],
+      emailSubject: 'Tree work for {{business}} jobs: a contractor rate from {{company.name}}',
+      email: 'Hi {{contact}},\n\nI\'m {{owner}} with {{company.name}}. We handle tree removal, trimming, stump grinding, crane work, and lot clearing across Lake County.\n\nWhen your jobs need trees cleared or trimmed first, we\'d like to be your go-to crew. Contractors who work with us get {{rate}}% off our standard pricing, priority scheduling, and fast estimates.\n\nWould a quick call next week work?\n\n{{owner}}\n{{company.name}} · {{company.phone}}\n{{company.address}}\n\nNot interested? Reply "no thanks" and I won\'t email again.',
+      text: 'Hi {{contact}}, it\'s {{owner}} from {{company.name}}. We clear and trim trees for contractors around Lake County and offer {{rate}}% off plus priority scheduling. Open to a quick call? {{company.phone}}',
+    };
   }
 
   /* ================= Calculations ================= */
