@@ -58,12 +58,14 @@ function sheet_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(SHEET);
   if (!sh) { sh = ss.insertSheet(SHEET); sh.appendRow(['Received', 'Name', 'Phone', 'Email', 'Address', 'Service', 'Message']); }
+  // Columns H-M record where the visitor came from (added later; older sheets get them automatically).
+  if (sh.getLastColumn() < 13) sh.getRange(1, 8, 1, 6).setValues([['Landing page', 'Referrer', 'UTM source', 'UTM medium', 'UTM campaign', 'Click ID']]);
   return sh;
 }
 function doPost(e) {
   const p = e.parameter || {};
   if (p.website) return out_({ ok: true }); // spam trap
-  sheet_().appendRow([new Date(), p.name || '', p.phone || '', p.email || '', p.address || '', p.service || '', p.message || '']);
+  sheet_().appendRow([new Date(), p.name || '', p.phone || '', p.email || '', p.address || '', p.service || '', p.message || '', p.landing || '', p.referrer || '', p.utm_source || '', p.utm_medium || '', p.utm_campaign || '', p.gclid || '']);
   return out_({ ok: true });
 }
 function doGet(e) {
@@ -75,7 +77,7 @@ function doGet(e) {
   for (let i = 1; i < values.length; i++) {
     if (i + 1 <= since) continue;
     const v = values[i];
-    rows.push({ row: i + 1, received: v[0], name: v[1], phone: String(v[2]), email: v[3], address: v[4], service: v[5], message: v[6] });
+    rows.push({ row: i + 1, received: v[0], name: v[1], phone: String(v[2]), email: v[3], address: v[4], service: v[5], message: v[6], landing: v[7] || '', referrer: v[8] || '', utm_source: v[9] || '', utm_medium: v[10] || '', utm_campaign: v[11] || '', gclid: v[12] || '' });
   }
   return out_({ rows: rows });
 }
@@ -94,10 +96,23 @@ function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj))
   </select>
   <textarea name="message" rows="4" placeholder="Tell us about the trees" style="padding:10px;border:1px solid #bbb;border-radius:6px"></textarea>
   <input name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+  <input type="hidden" name="landing"><input type="hidden" name="referrer"><input type="hidden" name="utm_source"><input type="hidden" name="utm_medium"><input type="hidden" name="utm_campaign"><input type="hidden" name="gclid">
   <button type="submit" style="padding:12px;border:0;border-radius:6px;background:${color};color:#fff;font-weight:600">Request a free estimate</button>
   <p id="mt-lead-msg" role="status"></p>
 </form>
 <script>
+(function () {
+  // Remembers where this visitor first arrived from, so the CRM can credit Google search, Maps, or ads.
+  var K = 'mt-first-touch', t = null;
+  try { t = JSON.parse(localStorage.getItem(K) || 'null'); } catch (x) {}
+  if (!t) {
+    var q = new URLSearchParams(location.search), r = document.referrer;
+    t = { landing: location.href.split('#')[0], referrer: r && r.indexOf(location.host) < 0 ? r : '', utm_source: q.get('utm_source') || '', utm_medium: q.get('utm_medium') || '', utm_campaign: q.get('utm_campaign') || '', gclid: q.get('gclid') || q.get('gbraid') || q.get('wbraid') || '' };
+    try { localStorage.setItem(K, JSON.stringify(t)); } catch (x) {}
+  }
+  var f = document.getElementById('mt-lead');
+  Object.keys(t).forEach(function (k) { if (f.elements[k]) f.elements[k].value = t[k]; });
+})();
 document.getElementById('mt-lead').addEventListener('submit', function (e) {
   e.preventDefault();
   var f = e.target, msg = document.getElementById('mt-lead-msg');
@@ -123,14 +138,17 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
       if (row.row <= (w.lastRow || 1)) return;
       w.lastRow = Math.max(w.lastRow || 1, row.row);
       if (!row.name && !row.phone && !row.email) return;
+      const attribution = { landing: row.landing || '', referrer: row.referrer || '', utm_source: row.utm_source || '', utm_medium: row.utm_medium || '', utm_campaign: row.utm_campaign || '', gclid: row.gclid || '' };
+      const channel = MT.calc.classifyChannel(attribution, s.settings.company.website);
+      const source = ['organic', 'maps', 'ads'].includes(channel) ? 'Google' : 'Website';
       let c = findCustomer(s, row);
       if (!c) {
         const parts = String(row.address || '').split(',');
-        c = { id: u.uid('c'), name: row.name || 'Website visitor', company: '', phone: row.phone || '', email: row.email || '', address: (parts[0] || '').trim(), city: parts.slice(1).join(',').trim(), source: 'Website', type: 'Residential', notes: '', createdAt: u.todayISO() };
+        c = { id: u.uid('c'), name: row.name || 'Website visitor', company: '', phone: row.phone || '', email: row.email || '', address: (parts[0] || '').trim(), city: parts.slice(1).join(',').trim(), source, type: 'Residential', notes: '', createdAt: u.todayISO() };
         s.customers.unshift(c);
       }
       const date = toISO(row.received) || u.todayISO();
-      const d = { id: u.uid('d'), customerId: c.id, title: row.service || 'Website request', value: 0, stage: 'lead', source: 'Website', probability: '', createdAt: date, expectedClose: u.addDays(date, 14), scheduledDate: '', closedAt: '', notes: row.message || '', estimateId: '', lostReason: '', payments: [], jobCost: '', costSource: '', crewIds: [], expenses: [], startTime: '', days: 1 };
+      const d = { id: u.uid('d'), customerId: c.id, title: row.service || 'Website request', value: 0, stage: 'lead', source, channel, attribution, probability: '', createdAt: date, expectedClose: u.addDays(date, 14), scheduledDate: '', closedAt: '', notes: row.message || '', estimateId: '', lostReason: '', payments: [], jobCost: '', costSource: '', crewIds: [], expenses: [], startTime: '', days: 1 };
       s.deals.unshift(d);
       store.log('lead', 'New website lead from ' + c.name + ': ' + d.title, { customerId: c.id, dealId: d.id });
       n++;
@@ -308,7 +326,8 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         </ol>
         <div class="btn-row"><button class="btn primary" id="ws-pull" ${w.scriptUrl ? '' : 'disabled'}>Check for new leads now</button>
           <label class="check"><input type="checkbox" id="ws-auto" ${w.autoCheck ? 'checked' : ''}><span>Check automatically every 10 minutes while the CRM is open</span></label></div>
-        <p class="hint">${w.lastPull ? 'Last checked ' + new Date(w.lastPull).toLocaleString() + '. ' : ''}${w.imported ? w.imported + ' leads imported so far.' : ''} New leads land in Leads with the source "Website".</p>`)}
+        <p class="hint">${w.lastPull ? 'Last checked ' + new Date(w.lastPull).toLocaleString() + '. ' : ''}${w.imported ? w.imported + ' leads imported so far.' : ''} New leads land in Leads. The form also records where the visitor came from, so leads from Google search, Google Maps, or ads are labeled automatically.</p>
+        <p class="hint">Note: website builders on budget plans (including Squarespace Basic) don't run custom scripts, so this form only works there on a plan with code blocks. On Squarespace Basic, use Squarespace's own form with a "How did you find us?" question, and pick the channel on each lead. See the SEO tab → Setup → Lead tracking.</p>`)}
 
       ${card('square', 'Square', sq.lastImport ? 'Imported ' + u.fmtShort(sq.lastImport.slice(0, 10)) : 'Import ready', sq.lastImport ? 'good' : 'info', 'Bring in your Square customers and card payments.', `
         <p>Square's live connection needs an always-on cloud connector (see below). Until then, import Square's exports. It takes about a minute:</p>

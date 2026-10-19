@@ -3,7 +3,7 @@
   'use strict';
   const MT = window.MT;
   const u = MT.u, store = MT.store;
-  const ROUTES = ['dashboard', 'pipeline', 'customers', 'estimator', 'invoices', 'jobcam', 'jobcost', 'time', 'calendar', 'routes', 'books', 'overhead', 'templates', 'branding', 'integrations', 'app', 'settings', 'crew'];
+  const ROUTES = ['dashboard', 'pipeline', 'customers', 'estimator', 'invoices', 'jobcam', 'jobcost', 'time', 'calendar', 'routes', 'books', 'overhead', 'templates', 'branding', 'integrations', 'app', 'settings', 'crew', 'seo'];
   const THEME_KEY = 'mammothcrm.theme';
 
   const app = {
@@ -51,6 +51,17 @@
     document.body.classList.remove('nav-open');
   }
 
+  function showUpdateReady() {
+    if (document.getElementById('update-bar')) return;
+    const bar = document.createElement('div');
+    bar.id = 'update-bar';
+    bar.className = 'update-bar';
+    bar.setAttribute('role', 'status');
+    bar.innerHTML = '<span>A new version of the CRM is ready.</span><button class="btn primary sm" type="button">Refresh</button>';
+    bar.querySelector('button').addEventListener('click', () => location.reload());
+    document.body.appendChild(bar);
+  }
+
   function applyTheme(t) {
     if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     else document.documentElement.removeAttribute('data-theme');
@@ -89,13 +100,22 @@
     });
     document.getElementById('crew-home').addEventListener('click', () => app.go('crew'));
     window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); MT.installPrompt = e; if (app.route === 'app') app.render(); });
-    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => { /* app still works without offline support */ });
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // Check for a new version whenever the app comes back to the screen, not only on a fresh launch.
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      }).catch(() => { /* app still works without offline support */ });
+      // A new version took over: offer a one-tap refresh instead of waiting for the next launch.
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateReady(); });
+    }
     document.getElementById('today').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
     // Keep other open tabs in step with this one.
     window.addEventListener('storage', (e) => { if (e.key === 'mammothcrm.data.v1' && e.newValue) { store.load(); MT.views.estimator.onDataReplaced(); MT.brand.apply(); app.render(); } });
     window.addEventListener('hashchange', onHash);
     window.addEventListener('resize', u.debounce(() => { if (['dashboard', 'routes'].includes(app.route)) app.render(); }, 250));
+    if (MT.seo) MT.seo.startup();
     onHash();
     MT.lock.init();
     // GitHub sync: catch up when the app opens, reconnects, or comes back to the foreground (at most once a minute).

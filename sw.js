@@ -1,11 +1,12 @@
 /* Mammoth CRM — service worker: makes the app installable and usable without signal.
    App files are served from the cache and refreshed in the background, so updates arrive on the next open. */
-const SHELL_CACHE = 'mammoth-shell-v5';
+const SHELL_CACHE = 'mammoth-shell-20261018-214057';
 const RUNTIME_CACHE = 'mammoth-runtime-v1';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/logo-navy.png', './icons/favicon-64.png',
   './js/util.js', './js/store.js', './js/seed.js', './js/charts.js', './js/media.js', './js/print.js', './js/brand.js', './js/lock.js', './js/crewlink.js', './js/clientimport.js',
+  './js/seo-connector.js', './js/seo-audit.js', './js/seo-ai.js', './js/seo.js', './js/views/seo.js',
   './js/views/dashboard.js', './js/views/customers.js', './js/views/estimator.js', './js/views/invoices.js', './js/views/pipeline.js',
   './js/views/jobcam.js', './js/views/jobcost.js', './js/views/timetrack.js', './js/views/calendar.js', './js/views/routes.js',
   './js/views/templates.js', './js/views/overhead.js', './js/views/books.js', './js/views/branding.js', './js/views/integrations.js', './js/views/settings.js',
@@ -15,7 +16,8 @@ const SHELL = [
 const RUNTIME_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloudflare.com'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache, so a new version never stores old copies of files.
+  e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL.map((p) => new Request(p, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

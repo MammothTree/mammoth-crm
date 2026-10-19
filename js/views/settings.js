@@ -13,6 +13,7 @@
     const s = store.state;
     const st = s.settings;
     const pin = MT.lock.isSet();
+    const restore = store.restorePoint();
     root.innerHTML = `
       <div class="settings">
         <section class="panel">
@@ -66,12 +67,16 @@
             <label class="btn ghost file-btn">Restore from backup<input type="file" accept="application/json,.json" id="dt-import" hidden></label>
             <button class="btn ghost" id="dt-csv">Export clients (CSV)</button>
           </div>
+          ${restore ? `<div class="danger-zone restore-zone">
+            <div><b>Undo is available</b><p class="hint">${u.esc(restore.label)} (${u.esc(new Date(restore.at).toLocaleString())}). Undo puts everything back exactly as it was then.</p></div>
+            <button class="btn primary" id="dt-undo">Undo</button>
+          </div>` : ''}
+          ${s.demo ? `<div class="danger-zone">
+            <div><b>Remove the sample data</b><p class="hint">Removes only the made-up sample clients, deals, estimates, invoices, time, calendar entries, and photos. Anything you entered yourself stays, and so do your settings, branding, price book, overhead, templates, and SEO setup. A restore point is saved first, so you can undo.</p></div>
+            <button class="btn danger" id="dt-clear">Remove sample data</button>
+          </div>` : ''}
           <div class="danger-zone">
-            <div><b>Start fresh</b><p class="hint">Remove the demo clients, deals, estimates, invoices, time, and calendar entries. Your settings, branding, price book, overhead, and templates are kept.</p></div>
-            <button class="btn danger" id="dt-clear">Clear demo data</button>
-          </div>
-          <div class="danger-zone">
-            <div><b>Reload demo data</b><p class="hint">Replace everything with the sample data.</p></div>
+            <div><b>Reload demo data</b><p class="hint">Replaces everything with the sample data. A restore point is saved first, so you can undo.</p></div>
             <button class="btn danger-ghost" id="dt-demo">Reload demo data</button>
           </div>
         </section>
@@ -145,7 +150,8 @@
         let data;
         try { data = JSON.parse(reader.result); } catch (e) { ui.toast('That file is not a valid backup (could not read JSON).', 'err'); return; }
         if (!data || !data.version || !Array.isArray(data.customers)) { ui.toast('That file is not a CRM backup.', 'err'); return; }
-        ui.confirm('Restore this backup?', 'It has ' + data.customers.length + ' clients and ' + (data.deals || []).length + ' deals. Everything in this browser will be replaced.', 'Restore backup', () => {
+        ui.confirm('Restore this backup?', 'It has ' + data.customers.length + ' clients and ' + (data.deals || []).length + ' deals. Everything in this browser will be replaced. A restore point is saved first, so you can undo.', 'Restore backup', () => {
+          safety('Before restoring a backup file');
           store.replace(data);
           MT.views.estimator.onDataReplaced();
           ui.toast('Backup restored');
@@ -160,8 +166,23 @@
       const csv = [cols.concat(['lifetimeValue']).join(',')].concat(s.customers.map((c) => cols.map((k) => q(c[k])).concat([MT.calc.lifetimeValue(s, c.id)]).join(','))).join('\r\n');
       u.download('clients-' + u.todayISO() + '.csv', csv, 'text/csv');
     });
-    u.qs('#dt-clear', root).addEventListener('click', () => ui.confirm('Clear demo data?', 'All clients, deals, estimates, invoices, time entries, calendar events, job cam folders and media, and activity will be removed from this browser.', 'Clear data', () => { store.clearAll(); MT.views.estimator.onDataReplaced(); ui.toast('Demo data cleared. Ready for real clients.'); }));
-    u.qs('#dt-demo', root).addEventListener('click', () => ui.confirm('Reload demo data?', 'Everything in this browser will be replaced with sample data.', 'Reload demo', () => { store.resetDemo(); MT.views.estimator.onDataReplaced(); ui.toast('Demo data reloaded'); }));
+    // Before removing or replacing data, keep a restore point. If the browser has no room for one, download a backup file instead.
+    const safety = (label) => {
+      if (store.saveRestorePoint(label)) return;
+      u.download('mammoth-crm-backup-' + u.todayISO() + '.json', JSON.stringify(s, null, 2));
+      ui.toast('A backup file was downloaded first, just in case.');
+    };
+    const clearBtn = u.qs('#dt-clear', root);
+    if (clearBtn) clearBtn.addEventListener('click', () => ui.confirm('Remove the sample data?', 'Only the made-up sample records are removed. Clients, leads, estimates, invoices, photos, and time you entered yourself are kept. You can undo this.', 'Remove sample data', () => {
+      safety('Before removing the sample data');
+      const k = store.clearAll();
+      MT.views.estimator.onDataReplaced();
+      const kept = k.customers + k.deals + k.estimates + k.invoices;
+      ui.toast(kept ? 'Sample data removed. Kept your ' + k.customers + ' clients, ' + k.deals + ' deals, ' + k.estimates + ' estimates, and ' + k.invoices + ' invoices.' : 'Sample data removed. Ready for real clients.');
+    }));
+    u.qs('#dt-demo', root).addEventListener('click', () => ui.confirm('Reload demo data?', 'Everything in this browser will be replaced with sample data. A restore point is saved first, so you can undo.', 'Reload demo', () => { safety('Before reloading the demo data'); store.resetDemo(); MT.views.estimator.onDataReplaced(); ui.toast('Demo data reloaded'); }));
+    const undoBtn = u.qs('#dt-undo', root);
+    if (undoBtn) undoBtn.addEventListener('click', () => ui.confirm('Undo?', 'Your data goes back to how it was at the restore point. Changes made since then are replaced.', 'Undo', () => { if (store.undoToRestorePoint()) { MT.views.estimator.onDataReplaced(); ui.toast('Restored'); } }));
   };
 
   MT.views.settings = view;

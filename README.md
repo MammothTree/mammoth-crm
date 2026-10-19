@@ -48,6 +48,7 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 | **Bookkeeping** | Its own PIN. Import bank and card files (CSV, QFX, or OFX). Transactions are sorted into categories automatically, duplicates are skipped, and your own rules are learned as you go. View any week, month, quarter, year, or custom range, then download a profit & loss (PDF or spreadsheet) and all transactions for your accountant. |
 | **Overhead & pricing** | Overhead, a rate card (per crew-hour, person-hour, half day, full day, week), rate history, the **Price a job** calculator, your add-ons list, and your price book. |
 | **Templates** | Emails, texts, and contract terms with merge fields such as `{{customer.firstName}}`, `{{invoice.balance}}`, and `{{company.reviewLink}}`. |
+| **SEO autopilot** | Weekly audit of mammoth-tree.com (titles, headings, links, canonical tags, structured data, indexing), Google Search Console and Analytics numbers, rankings by town and service, opportunities ranked by dollar value using your CRM's close rate and average job, service and town page drafts, and an approval workflow with publishing steps, change history, and rollback. See below. |
 
 ### Account
 
@@ -58,9 +59,21 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 | **Phone app** | The web address with a QR code, install steps, crew view, sending a crew member their day, and importing their hours. |
 | **Settings** | Defaults, crew and roles, PIN lock, backups, and clearing the demo data. |
 
+## SEO autopilot
+
+Everything is free and works on the Squarespace Basic plan. Setup steps are on the **SEO autopilot → Setup** tab.
+
+- **SEO connector:** a Google Apps Script in a Google Sheet called "Mammoth SEO". It runs on Google's servers, so it can crawl the website, read Search Console and Analytics (read-only), and run the audit every Monday even when no device is open. Results are stored in hidden tabs of that sheet.
+- **No automatic website edits:** Squarespace has no public API for pages, blog posts, or SEO fields, so the CRM never edits the site. Every change is a draft → you approve → you paste it in using the copy-ready text and steps → the next audit confirms it's live. Before-text is kept for rollback.
+- **Town pages are gated:** a town gets its own page only with real local proof in the CRM (3 completed jobs, or 1 job plus 4 Job cam photos), at most 2 new town pages per 30 days, plus a similarity check against existing pages.
+- **Lead tracking:** each lead has a "Found us online through" field (Google search, Google Maps, ads…). The Integrations website form fills it automatically on plans that run custom code.
+- **AI (optional):** add `AI_KEY` under the connector's Script properties (optional `AI_MODEL`, `AI_EFFORT`). The same buttons then write drafts with Claude instead of templates. Autopilot can prepare drafts after each weekly audit but never publishes. The key never leaves Google's servers.
+- **Where data lives:** SEO settings, approvals, and history are in the browser and in `data/seo.json` in the private data repository. Audit results stay in the connector sheet.
+- **Updating the connector:** when `js/seo-connector.js` changes, paste the new code into Apps Script and use Deploy → Manage deployments → Edit → New version (the web address stays the same). The audit rules live in `js/seo-audit.js`, so most improvements need no connector update.
+
 ## First steps for real use
 
-1. **Settings → Clear demo data.** Settings, branding, price book, overhead, templates, and goal are kept.
+1. **Settings → Remove sample data.** Only the made-up sample records go. Anything you entered yourself (clients, leads, estimates, invoices, photos, time, bank imports) is kept, as are settings, branding, price book, overhead, templates, goal, and SEO setup. A restore point is saved first, and **Settings → Undo** puts everything back.
 2. **Settings → Crew & roles:** add your crew and wages.
 3. **Branding:** add your logo, colors, and yard address.
 4. **Integrations:** connect GitHub on each device, and set up the website form.
@@ -71,6 +84,7 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 - Keys and tokens (GitHub, Google) stay in the browser where they're entered. They're never in backups or synced files.
 - The app PIN and the bookkeeping PIN are privacy screens. They don't encrypt data.
 - **Settings → Download backup** saves everything except photos to a file. Photos are backed up to GitHub instead.
+- App updates never erase data: new features are added around what's already saved. Removing sample data, reloading the demo, or restoring a backup file all save a restore point first (Settings → Undo). GitHub sync also keeps every past version of the data file.
 
 ## How the numbers work
 
@@ -97,6 +111,10 @@ js/print.js            Printable estimates and invoices
 js/brand.js            Branding
 js/lock.js             PIN lock
 js/crewlink.js         Crew day links and texted hours
+js/seo.js              SEO settings, connector client, approvals, publishing adapters, sync
+js/seo-audit.js        SEO audit rules, rankings, opportunities
+js/seo-ai.js           SEO content templates and the AI hook
+js/seo-connector.js    The Google Apps Script connector (copied in from the Setup tab)
 js/views/*.js          One file per tab
 js/app.js              Navigation and startup
 manifest.webmanifest, sw.js, icons/   Installable phone app and offline support

@@ -95,7 +95,7 @@
 
   /**
    * Single-series columns that may go negative (e.g. profit by month).
-   * opts: { labels:[], values:[], tip(i) -> html, ariaLabel }
+   * opts: { labels:[], values:[], tip(i) -> html, ariaLabel, fmt(v) -> axis label (default: money) }
    */
   charts.bars = function (host, opts) {
     host.innerHTML = '';
@@ -113,7 +113,7 @@
       const v = lo + ((hi - lo) / ticks) * i;
       el('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: 'grid' }, svg);
       const t = el('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', class: 'tick' }, svg);
-      t.textContent = u.moneyShort(v);
+      t.textContent = opts.fmt ? opts.fmt(v) : u.moneyShort(v);
     }
     el('line', { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), class: 'axis' }, svg);
     const n = vals.length;

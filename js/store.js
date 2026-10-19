@@ -5,6 +5,7 @@
   const u = MT.u;
   const KEY = 'mammothcrm.data.v1';
   const SYNC_KEY = 'mammothcrm.github.v1'; // kept separate so the token is never exported or synced
+  const RESTORE_KEY = 'mammothcrm.restore.v1';
 
   const STAGES = [
     { id: 'lead', name: 'New Lead', prob: 0.1 },
@@ -16,6 +17,16 @@
   ];
   const OPEN_STAGES = ['lead', 'contacted', 'estimate', 'negotiating'];
   const SOURCES = ['Google', 'Referral', 'Repeat Customer', 'Facebook', 'Yard Sign', 'Nextdoor', 'Storm Canvass', 'Website', 'Other'];
+  // Marketing channel: where an online lead actually came from. Kept separate from "source" so existing reports don't change.
+  const CHANNELS = [
+    { id: 'organic', label: 'Google search (organic)' },
+    { id: 'maps', label: 'Google Maps / Business Profile' },
+    { id: 'ads', label: 'Google Ads / Local Services Ads' },
+    { id: 'social', label: 'Social media' },
+    { id: 'referral-site', label: 'Another website (Yelp, Angi, BBB…)' },
+    { id: 'direct', label: 'Typed our web address' },
+    { id: 'offline', label: 'Offline (word of mouth, truck, sign)' },
+  ];
   const COMPLEXITY = [
     { value: 0, label: 'Standard: open access, nothing to protect' },
     { value: 0.1, label: 'Moderate: backyard or limited access (+10%)' },
@@ -25,7 +36,7 @@
 
   const listeners = [];
   const store = {
-    STAGES, OPEN_STAGES, SOURCES, COMPLEXITY,
+    STAGES, OPEN_STAGES, SOURCES, CHANNELS, COMPLEXITY,
     state: null,
 
     load() {
@@ -50,25 +61,40 @@
       this.state = migrate(data);
       this.save();
     },
+    // Photos and videos are left in device storage on purpose, so "Undo" can bring their folders back.
     resetDemo() {
-      if (MT.media) MT.media.clear().catch(() => {});
       this.state = MT.seed();
       this.save();
     },
+    /** Removes only the sample data. Your own records are kept; see removeSamples(). Returns how many of yours were kept. */
     clearAll() {
       const s = this.state;
-      if (MT.media) MT.media.clear().catch(() => {});
-      s.customers = []; s.deals = []; s.estimates = []; s.activities = []; s.jobFolders = [];
-      s.invoices = []; s.timeEntries = []; s.events = [];
-      s.books = { accounts: [], txns: [], rules: (s.books && s.books.rules) || [], imports: [] };
-      s.nextEstimateNo = 1001; s.nextInvoiceNo = 1001;
+      removeSamples(s);
+      if (!s.estimates.length) s.nextEstimateNo = 1001;
+      if (!s.invoices.length) s.nextInvoiceNo = 1001;
       const di = MT.defaultIntegrations();
       if (s.integrations.google.sample) s.integrations.google = di.google;
       if (s.integrations.yelp.sample) s.integrations.yelp = di.yelp;
-      if (s.demo) s.crew = s.crew.filter((c) => c.role === 'Owner');
       s.settings.company.yardGeo = s.settings.company.yardGeo && s.settings.company.yardGeo.sample ? null : s.settings.company.yardGeo;
       s.demo = false;
       this.save();
+      return { customers: s.customers.length, deals: s.deals.length, estimates: s.estimates.length, invoices: s.invoices.length, folders: s.jobFolders.length };
+    },
+    /* ---------- restore point: a full copy saved before anything big is removed or replaced ---------- */
+    saveRestorePoint(label) {
+      try { localStorage.setItem(RESTORE_KEY, JSON.stringify({ at: new Date().toISOString(), label, data: this.state })); return true; }
+      catch (e) { return false; }
+    },
+    restorePoint() {
+      try { const r = JSON.parse(localStorage.getItem(RESTORE_KEY) || 'null'); return r && r.data && r.data.version ? r : null; }
+      catch (e) { return null; }
+    },
+    undoToRestorePoint() {
+      const r = this.restorePoint();
+      if (!r) return false;
+      this.replace(r.data);
+      try { localStorage.removeItem(RESTORE_KEY); } catch (e) { /* ignore */ }
+      return true;
     },
     onChange(fn) { listeners.push(fn); },
 
@@ -108,6 +134,53 @@
     },
   };
   MT.store = store;
+
+  /* ---------- sample data removal ----------
+     The demo data uses short ids ("c4", "d12", "jf3"). Everything created in the app gets an id with an
+     underscore ("c_lk2x9a…"). So sample records can be removed without touching anything you entered.
+     A sample client or job that your own work points to (an estimate, invoice, deal, or photo folder) is kept too. */
+  const isSample = (x) => !!x && typeof x.id === 'string' && x.id.indexOf('_') < 0;
+  const SAMPLE_EVENTS = ['Crew safety meeting', 'Bucket truck annual inspection'];
+  function removeSamples(s) {
+    const mine = (list) => (list || []).filter((x) => !isSample(x));
+    const hasOwnMedia = (f) => (f.media || []).some((m) => !m.sample);
+    const keepDeal = new Set(), keepCust = new Set();
+    mine(s.deals).concat(mine(s.estimates), mine(s.invoices), mine(s.jobFolders), (s.jobFolders || []).filter((f) => isSample(f) && hasOwnMedia(f)))
+      .forEach((r) => { if (r.customerId) keepCust.add(r.customerId); if (r.dealId) keepDeal.add(r.dealId); });
+    s.deals.forEach((d) => { if (keepDeal.has(d.id) && d.customerId) keepCust.add(d.customerId); });
+
+    s.deals = s.deals.filter((d) => !isSample(d) || keepDeal.has(d.id));
+    s.customers = s.customers.filter((c) => !isSample(c) || keepCust.has(c.id));
+    s.estimates = mine(s.estimates);
+    s.invoices = mine(s.invoices);
+    s.jobFolders = (s.jobFolders || []).filter((f) => !isSample(f) || hasOwnMedia(f));
+    s.crew = s.crew.filter((c) => !isSample(c) || c.role === 'Owner');
+
+    const custIds = new Set(s.customers.map((c) => c.id)), dealIds = new Set(s.deals.map((d) => d.id));
+    const crewIds = new Set(s.crew.map((c) => c.id)), estIds = new Set(s.estimates.map((e) => e.id)), invIds = new Set(s.invoices.map((i) => i.id));
+    s.jobFolders.forEach((f) => {
+      f.media = (f.media || []).filter((m) => !m.sample);
+      if (f.dealId && !dealIds.has(f.dealId)) f.dealId = '';
+      if (f.customerId && !custIds.has(f.customerId)) f.customerId = '';
+    });
+    s.deals.forEach((d) => {
+      d.crewIds = (d.crewIds || []).filter((id) => crewIds.has(id));
+      if (d.estimateId && !estIds.has(d.estimateId)) d.estimateId = '';
+      (d.payments || []).forEach((p) => { if (p.invoiceId && !invIds.has(p.invoiceId)) p.invoiceId = ''; });
+    });
+    s.timeEntries = (s.timeEntries || []).filter((t) => crewIds.has(t.crewId) && (!t.dealId || dealIds.has(t.dealId)));
+    s.events = (s.events || []).filter((e) => (!e.dealId || dealIds.has(e.dealId)) && (!e.customerId || custIds.has(e.customerId)) && !(!e.dealId && !e.customerId && SAMPLE_EVENTS.includes(e.title)));
+    s.activities = mine(s.activities).filter((a) => (!a.dealId || dealIds.has(a.dealId)) && (!a.customerId || custIds.has(a.customerId)));
+
+    const b = s.books || {};
+    const sampleAccts = new Set((b.accounts || []).filter(isSample).map((a) => a.id));
+    s.books = {
+      accounts: (b.accounts || []).filter((a) => !sampleAccts.has(a.id)),
+      txns: (b.txns || []).filter((t) => !sampleAccts.has(t.accountId)),
+      rules: b.rules || [],
+      imports: (b.imports || []).filter((i) => !sampleAccts.has(i.accountId)),
+    };
+  }
 
   function migrate(data) {
     const base = MT.seed();
@@ -423,6 +496,24 @@
     const est = d.estimateId && state.estimates.find((x) => x.id === d.estimateId);
     const equipment = est ? calc.estimate(est, state).equipCost : 0;
     return { entries, personHours, crewHours, labor, overheadShare, expenses, equipment, tracked: entries.length > 0, open: entries.some((e) => !e.end), total: labor + overheadShare + expenses + equipment };
+  };
+
+  /* ---------- Lead attribution ---------- */
+  /** Works out a lead's marketing channel from what the website form captured (landing page, referrer, UTM tags, click IDs). */
+  calc.classifyChannel = function (a, siteHost) {
+    a = a || {};
+    const host = (url) => { const m = String(url || '').toLowerCase().match(/^https?:\/\/([^/?#]+)/); return m ? m[1].replace(/^www\./, '') : ''; };
+    const src = String(a.utm_source || '').toLowerCase(), med = String(a.utm_medium || '').toLowerCase(), camp = String(a.utm_campaign || '').toLowerCase();
+    const ref = String(a.referrer || '').toLowerCase(), refHost = host(ref);
+    const own = String(siteHost || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+    if (a.gclid || a.gbraid || a.wbraid || /^(cpc|ppc|paid|paidsearch|paid_search|lsa)$/.test(med)) return 'ads';
+    if (/gbp|gmb|business.?profile|google.?maps/.test(camp + ' ' + src)) return 'maps';
+    if (/google\.[a-z.]+\/maps|maps\.google\./.test(ref)) return 'maps';
+    if (med === 'organic' || /(^|\.)(google|bing|duckduckgo|yahoo|ecosia|brave)\.[a-z.]+$/.test(refHost)) return 'organic';
+    if (/facebook|instagram|nextdoor|tiktok|youtube|twitter|linkedin|pinterest|(^|\.)x\.com/.test(refHost + ' ' + src)) return 'social';
+    if (refHost && refHost !== own) return 'referral-site';
+    if (src || med) return 'referral-site';
+    return refHost === own && own ? '' : a.landing ? 'direct' : '';
   };
 
   /* ---------- Distance ---------- */

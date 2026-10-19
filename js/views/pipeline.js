@@ -112,6 +112,7 @@
         <label class="field"><span>Stage</span><select class="input" name="stage">${u.options(store.STAGES.map((x) => ({ value: x.id, label: x.name })), d.stage)}</select></label>
         <label class="field"><span>Win probability (%)</span><input class="input" type="number" min="0" max="100" name="probability" value="${u.esc(d.probability)}" placeholder="Stage default: ${Math.round(store.stage(d.stage).prob * 100)}"></label>
         <label class="field"><span>Lead source</span><select class="input" name="source">${u.options(store.SOURCES, d.source, 'Unknown')}</select></label>
+        <label class="field"><span>Found us online through</span><select class="input" name="channel">${u.options(store.CHANNELS.map((c) => ({ value: c.id, label: c.label })), d.channel || '', 'Not recorded')}</select></label>
         <label class="field"><span>Expected close</span><input class="input" type="date" name="expectedClose" value="${u.esc(d.expectedClose)}"></label>
         <label class="field"><span>Job date</span><input class="input" type="date" name="scheduledDate" value="${u.esc(d.scheduledDate)}"></label>
         <label class="field won-only"><span>Start time</span><input class="input" type="time" name="startTime" value="${u.esc(d.startTime || '')}"></label>
