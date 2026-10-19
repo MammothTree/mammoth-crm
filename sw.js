@@ -1,6 +1,6 @@
 /* Mammoth CRM — service worker: makes the app installable and usable without signal.
    App files are served from the cache and refreshed in the background, so updates arrive on the next open. */
-const SHELL_CACHE = 'mammoth-shell-20261018-214057';
+const SHELL_CACHE = 'mammoth-shell-20261018-214137';
 const RUNTIME_CACHE = 'mammoth-runtime-v1';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
