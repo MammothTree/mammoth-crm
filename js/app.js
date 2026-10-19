@@ -51,7 +51,16 @@
     document.body.classList.remove('nav-open');
   }
 
+  /** True when nothing would be lost by reloading or replacing data: no open window, no field being typed in, not mid-estimate. */
+  function idle() {
+    const a = document.activeElement;
+    return !document.querySelector('.modal-backdrop') && !(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) && app.route !== 'estimator';
+  }
+  app.idle = idle;
+
+  let updatePending = false;
   function showUpdateReady() {
+    updatePending = true;
     if (document.getElementById('update-bar')) return;
     const bar = document.createElement('div');
     bar.id = 'update-bar';
@@ -103,10 +112,15 @@
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
       const hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.register('sw.js').then((reg) => {
-        // Check for a new version whenever the app comes back to the screen, not only on a fresh launch.
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+        // Check for a new version whenever the app comes back to the screen, and every 5 minutes while it's open.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState !== 'visible') return;
+          if (updatePending && idle()) { location.reload(); return; } // coming back to the app: switch to the new version quietly
+          reg.update().catch(() => {});
+        });
+        setInterval(() => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); }, 5 * 60000);
       }).catch(() => { /* app still works without offline support */ });
-      // A new version took over: offer a one-tap refresh instead of waiting for the next launch.
+      // A new version took over while the app was open: offer a one-tap refresh.
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateReady(); });
     }
     document.getElementById('today').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -118,16 +132,18 @@
     if (MT.seo) MT.seo.startup();
     onHash();
     MT.lock.init();
-    // GitHub sync: catch up when the app opens, reconnects, or comes back to the foreground (at most once a minute).
+    // GitHub sync: catch up when the app opens, reconnects, comes back to the foreground, and every minute while it's
+    // on screen, so changes made on another device show up within about a minute. Never while a window or form is open.
     let lastSync = 0;
     const catchUp = () => {
-      if (!MT.sync.ready() || Date.now() - lastSync < 60000 || navigator.onLine === false) return;
+      if (!MT.sync.ready() || Date.now() - lastSync < 55000 || navigator.onLine === false || !idle()) return;
       lastSync = Date.now();
       MT.sync.autoSync().then(() => { if (MT.sync.cfg().mediaAuto) return MT.media.backupAll(); }).catch(() => { /* will retry next time */ });
     };
     setTimeout(catchUp, 1500);
     window.addEventListener('online', catchUp);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') catchUp(); });
+    setInterval(() => { if (document.visibilityState === 'visible') catchUp(); }, 60000);
     // Website leads: check on open, then every 10 minutes while the CRM is open.
     if (MT.views.integrations && MT.views.integrations.autoPull) {
       setTimeout(() => MT.views.integrations.autoPull(), 4000);

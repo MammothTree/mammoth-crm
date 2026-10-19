@@ -1,6 +1,7 @@
 /* Mammoth CRM — service worker: makes the app installable and usable without signal.
-   App files are served from the cache and refreshed in the background, so updates arrive on the next open. */
-const SHELL_CACHE = 'mammoth-shell-20261018-214137';
+   App files come from the network first, so every open with signal runs the newest version. The saved copy is
+   used when offline or when the network is too slow to answer in a few seconds. */
+const SHELL_CACHE = 'mammoth-shell-20261018-215249';
 const RUNTIME_CACHE = 'mammoth-runtime-v1';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
@@ -30,13 +31,26 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
 
   if (url.origin === self.location.origin) {
-    // Stale-while-revalidate: instant from cache, then refresh the cache from the network.
+    // Network first: ask GitHub Pages whether the file changed (a quick "not modified" when it hasn't), save the answer,
+    // and fall back to the saved copy when offline or after 3 seconds without an answer.
     e.respondWith(caches.open(SHELL_CACHE).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: req.mode === 'navigate' }) || (req.mode === 'navigate' ? await cache.match('./index.html') : null);
-      const fresh = fetch(req).then((res) => { if (res && res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
-      if (cached) { e.waitUntil(fresh); return cached; }
-      const res = await fresh;
-      return res || new Response('Offline', { status: 503, statusText: 'Offline' });
+      const nav = req.mode === 'navigate';
+      // Every way of opening the app (home address, index.html, crew links with ?…) is the same page, saved in one place.
+      const key = nav ? new URL('index.html', self.location.href).href : req;
+      const saved = async () => (await cache.match(key)) || (nav ? await cache.match(req, { ignoreSearch: true }) : null);
+      // A page navigation can't be copied with new options, so it is fetched again by its address.
+      const netReq = nav ? new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : new Request(req, { cache: 'no-cache' });
+      const net = fetch(netReq).then((res) => { if (res && res.ok) cache.put(key, res.clone()); return res; });
+      const slow = new Promise((resolve) => setTimeout(resolve, 3000, null));
+      try {
+        const res = await Promise.race([net, slow]);
+        if (res) return res;
+        const copy = await saved();
+        if (copy) { e.waitUntil(net.catch(() => null)); return copy; } // slow network: use the saved copy, keep updating in the background
+        return await net;
+      } catch (err) {
+        return (await saved()) || new Response('Offline', { status: 503, statusText: 'Offline' });
+      }
     }));
     return;
   }
