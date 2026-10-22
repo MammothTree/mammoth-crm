@@ -339,16 +339,19 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         <p class="hint">${w.lastPull ? 'Last checked ' + new Date(w.lastPull).toLocaleString() + '. ' : ''}${w.imported ? w.imported + ' leads imported so far.' : ''} New leads land in Leads. The form also records where the visitor came from, so leads from Google search, Google Maps, or ads are labeled automatically.</p>
         <p class="hint">Note: website builders on budget plans (including Squarespace Basic) don't run custom scripts, so this form only works there on a plan with code blocks. On Squarespace Basic, use Squarespace's own form with a "How did you find us?" question, and pick the channel on each lead. See the SEO tab → Setup → Lead tracking.</p>`)}
 
-      ${card('square', 'Square', pc.url ? (pc.lastError ? 'Needs attention' : 'Online payments on') : sq.lastImport ? 'Imported ' + u.fmtShort(sq.lastImport.slice(0, 10)) : 'Not connected', pc.url ? (pc.lastError ? 'warn' : 'good') : sq.lastImport ? 'good' : 'info', 'Customers pay deposits and invoices online by card, and the CRM marks them paid on its own.', `
-        <h4>Online payments (automatic)</h4>
-        <p>A free Google Apps Script keeps your Square access key on Google's servers. It's never stored in the CRM or on GitHub. The CRM uses it to:</p>
-        <ul class="bullets"><li>Create a Square pay link for the exact deposit or invoice balance (in <b>Request the deposit</b>, on each invoice, and in payment reminders).</li><li>Check every 2 minutes while the CRM is open, and record each online payment on the right job and invoice.</li><li>Bring in your other Square payments (card reader, tap to pay) for you to match to jobs.</li></ul>
+      ${card('square', 'Square & online estimates', pc.url ? (pc.lastError ? 'Needs attention' : pc.square === false ? 'Sending on' : 'Connected') : sq.lastImport ? 'Imported ' + u.fmtShort(sq.lastImport.slice(0, 10)) : 'Not connected', pc.url ? (pc.lastError ? 'warn' : 'good') : sq.lastImport ? 'good' : 'info', 'Email estimates and invoices, let customers approve or ask for changes online, see when they open them, and take payments through Square.', `
+        <h4>What the connector does</h4>
+        <p>One free Google Apps Script runs on Google's servers for you. Your Square key is kept there, never in the CRM or on GitHub.</p>
+        <ul class="bullets">
+          <li><b>Preview &amp; send</b> on estimates and invoices emails them from your Google account with the PDF attached, and you get a confirmation when it's sent.</li>
+          <li>Each one gets a private page for your customer: they can view it, approve it by typing their name, ask for changes, or pay. You see when they open it, and their approval or notes show up on the estimate. You also get an email when they reply.</li>
+          <li>With Square connected: pay links for the exact deposit or balance, checked every 2 minutes and recorded on the right job and invoice automatically, plus your other Square payments (card reader, tap to pay) for you to match to jobs.</li>
+        </ul>
         <ol class="steps">
-          <li>Get your Square key: open the <a href="https://developer.squareup.com/apps" target="_blank" rel="noopener">Square Developer dashboard</a> and sign in with your normal Square account. Select <b>+ Create an application</b> and name it "Mammoth CRM". Open it, switch the toggle at the top to <b>Production</b>, and under <b>Credentials</b> copy the <b>Production Access token</b>.</li>
-          <li>Go to <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com → New project</a>. Name it "Mammoth Square". Delete what's there, paste this code, and save. <button class="btn ghost sm" data-copy="paycode">Copy code</button>
+          <li>Go to <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com → New project</a> (sign in with the Google account you want emails to come from). Name it "Mammoth Connector". Delete what's there, paste this code, and save. <button class="btn ghost sm" data-copy="paycode">Copy code</button>
             <pre class="code" id="cp-paycode">${u.esc(MT.payConnector.code(pc.key))}</pre></li>
-          <li>Select <b>Project Settings</b> (gear icon) → <b>Script properties</b> → <b>Add script property</b>. Property: <code>SQUARE_TOKEN</code>. Value: the token from step 1. Save.</li>
-          <li>Back in the Editor, choose <b>authorize</b> in the function menu and select <b>Run</b>. Allow access. If Google says the app isn't verified, select Advanced → Go to Mammoth Square. It's your own script.</li>
+          <li><b>Square (optional, for online payments):</b> open the <a href="https://developer.squareup.com/apps" target="_blank" rel="noopener">Square Developer dashboard</a> and sign in with your normal Square account. Select <b>+ Create an application</b> and name it "Mammoth CRM". Open it, switch the toggle at the top to <b>Production</b>, and under <b>Credentials</b> copy the <b>Production Access token</b>. In Apps Script, select <b>Project Settings</b> (gear icon) → <b>Script properties</b> → <b>Add script property</b>. Property: <code>SQUARE_TOKEN</code>. Value: the token. Save.</li>
+          <li>Back in the Editor, choose <b>authorize</b> in the function menu and select <b>Run</b>. Allow access: it asks to send email as you, contact Square, and create one Google Sheet that logs opens and replies. If Google says the app isn't verified, select Advanced → Go to Mammoth Connector. It's your own script.</li>
           <li>Select <b>Deploy → New deployment → Web app</b>. Set "Execute as" to <b>Me</b> and "Who has access" to <b>Anyone</b>. Deploy and copy the Web app URL.</li>
           <li>Paste the URL here and test it:
             <div class="input-with-btn"><input class="input" id="pc-url" value="${u.esc(pc.url)}" placeholder="https://script.google.com/macros/s/…/exec"><button class="btn primary sm" id="pc-save">Save &amp; test</button></div></li>
@@ -357,7 +360,7 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         ${pc.url ? `<p class="hint">${pc.env === 'sandbox' ? '<b>Sandbox (test mode):</b> no real money moves. ' : ''}${pc.locations && pc.locations.length ? 'Connected to ' + u.esc((pc.locations.find((l) => l.id === pc.locationId) || pc.locations[0]).name) + '. ' : ''}${pc.lastCheck ? 'Last checked ' + new Date(pc.lastCheck).toLocaleString() + '. ' : ''}${MT.pay.openLinks().length} pay ${MT.pay.openLinks().length === 1 ? 'link is' : 'links are'} waiting for payment.</p>
           ${pc.lastError ? `<p class="hint neg">${u.esc(pc.lastError)}</p>` : ''}
           <div class="btn-row"><button class="btn ghost" id="pc-check">Check for payments now</button><button class="btn ghost" id="pc-recent">Bring in other Square payments (last 30 days)</button><button class="btn danger-ghost" id="pc-off">Disconnect</button></div>` : ''}
-        <p class="hint">Square charges its normal online card fee on each payment. Customers pay on Square's secure checkout page and never see your CRM. When you change the code above (after a CRM update), paste it again and use Deploy → Manage deployments → Edit → New version. The web address stays the same.</p>
+        <p class="hint">Square charges its normal online card fee on each payment. Customers pay on Square's secure checkout page and never see your CRM. Google lets a regular account send about 100 emails a day through scripts (1,500 on Google Workspace). Customer pages show a small Google notice at the top: that's normal for Apps Script pages. When you change the code above (after a CRM update), paste it again and use Deploy → Manage deployments → Edit → New version. The web address stays the same.</p>
 
         <h4 style="margin-top:18px">Import from a file</h4>
         <p>Without the connector, you can import Square's exports. It takes about a minute:</p>
@@ -451,7 +454,9 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
       e.target.disabled = true; e.target.textContent = 'Testing…';
       try {
         const st = await MT.pay.test();
-        ui.toast('Square connected' + (st.env === 'sandbox' ? ' (sandbox test mode)' : '') + ': ' + ((st.locations || []).map((l) => l.name).join(', ') || 'no locations found'));
+        if (pc.lastError) ui.toast('Connected for sending, but Square isn\'t working yet: ' + pc.lastError, 'err');
+        else if (st.square || !(st.version >= 2)) ui.toast('Connected' + (st.env === 'sandbox' ? ' (Square sandbox test mode)' : '') + '. Square: ' + ((st.locations || []).map((l) => l.name).join(', ') || 'no locations found'));
+        else ui.toast('Connected for sending estimates and invoices. Add SQUARE_TOKEN to turn on Square pay links.');
       } catch (err) { pc.lastError = err.message; store.save(true); ui.toast(err.message, 'err'); }
       view.render(root);
     });

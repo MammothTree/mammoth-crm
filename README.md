@@ -72,11 +72,18 @@ Everything is free and works on the Squarespace Basic plan. Setup steps are on t
 - **Where data lives:** SEO settings, approvals, and history are in the browser and in `data/seo.json` in the private data repository. Audit results stay in the connector sheet.
 - **Updating the connector:** when `js/seo-connector.js` changes, paste the new code into Apps Script and use Deploy → Manage deployments → Edit → New version (the web address stays the same). The audit rules live in `js/seo-audit.js`, so most improvements need no connector update.
 
-## Square online payments
+## Sending estimates & invoices, customer approval, Square payments
 
-Setup steps are on **Integrations → Square**.
+Setup steps are on **Integrations → Square & online estimates**. One free Google Apps Script web app ("Mammoth Connector", code in `js/pay-connector.js`) does all of this.
 
-- **Square connector:** a Google Apps Script web app ("Mammoth Square"). Your Square production access token is stored only in that script's Script properties (`SQUARE_TOKEN`). It's never in the browser, backups, or GitHub. Optional properties: `SQUARE_ENV=sandbox` (test mode) and `SQUARE_VERSION`.
+- **Preview & send** (estimates and invoices): the preview looks exactly like the PDF.
+  - **Email** is sent from your Google account with the PDF attached and a button to the customer's page. The CRM records "Emailed to … sent".
+  - **Text** opens your messages app with the link, then asks you to confirm it went out.
+  - Without the connector, Send uses your email or messages app (with the PDF on phones), and Print / save PDF still works.
+- **Customer page:** a private link (same link for updated versions). The customer can view the document, approve an estimate by typing their name, ask for changes, send a question about an invoice, or pay through Square. Opens and replies are logged in a Google Sheet the script creates.
+  - Every 2 minutes, the CRM shows opens (count and last time) and approvals (estimate accepted, job Won), and flags change requests with the customer's note.
+  - You get an email when the customer approves or writes. Your own look via "See customer page" isn't counted as an open.
+- **Square connector:** Your Square production access token is stored only in that script's Script properties (`SQUARE_TOKEN`; optional, needed only for pay links). It's never in the browser, backups, or GitHub. Optional properties: `SQUARE_ENV=sandbox` (test mode) and `SQUARE_VERSION`.
 - **Pay links:** **Request the deposit**, each invoice, and payment reminders create a Square payment link for the exact amount. Links are reused rather than duplicated, and saved on the job (`deal.payLinks`).
 - **Automatic recording:** while the CRM is open, it checks unpaid links every 2 minutes. Each payment is recorded as a Square payment on the job and its invoice. A paid deposit also accepts the estimate and moves the job to Won.
 - **Other Square payments** (card reader, tap to pay): **Bring in other Square payments** opens the same matching screen as the CSV import. Already recorded payments are skipped, so nothing is counted twice.
@@ -121,6 +128,7 @@ js/media.js            Job cam storage and GitHub photo backup
 js/print.js            Printable estimates and invoices
 js/files.js            Files and contracts attached to jobs
 js/pay.js              Square pay links and automatic payment recording
+js/docs.js             Preview, PDF, email/text sending, and customer activity for estimates and invoices
 js/pay-connector.js    The Google Apps Script Square connector (copied in from Integrations)
 js/brand.js            Branding
 js/lock.js             PIN lock

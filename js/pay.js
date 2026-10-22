@@ -20,7 +20,10 @@
       if (!c.key) { c.key = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12); store.save(true); }
       return c;
     },
-    ready() { const c = pay.cfg(); return !!(c.url && c.key); },
+    /** The connector is set up (sending and customer pages work). */
+    connected() { const c = pay.cfg(); return !!(c.url && c.key); },
+    /** Square pay links work (the connector has a working SQUARE_TOKEN). */
+    ready() { const c = pay.cfg(); return !!(c.url && c.key && c.square !== false); },
 
     async get(action, params) {
       const c = pay.cfg();
@@ -58,9 +61,13 @@
       const st = await pay.get('status');
       c.locations = st.locations || [];
       c.env = st.env || '';
+      c.version = st.version || 1;
+      // Version 1 connectors only did Square; version 2 also sends documents and may run without a Square token.
+      c.square = st.version >= 2 ? !!st.square : true;
+      c.docs = st.version >= 2;
       const active = c.locations.filter((l) => l.status === 'ACTIVE');
       if (!c.locationId || !c.locations.some((l) => l.id === c.locationId)) c.locationId = (active[0] || c.locations[0] || {}).id || '';
-      c.lastError = '';
+      c.lastError = st.squareError ? pay.friendly(st.squareError) : '';
       store.save(true);
       return st;
     },

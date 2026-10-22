@@ -266,12 +266,13 @@
           <small>Target margin ${u.pct(target)}. You are earning ${u.money(t.effectiveRate)} per crew-hour; break-even is ${u.money(oh.breakEvenRate)}.</small>
         </div>
       </div>
+      ${!view.isNew ? MT.docs.trackHTML('estimate', store.estimate(e.id)) : ''}
       <div class="sum-actions">
         <button class="btn primary" data-act="save">${view.isNew ? 'Save estimate' : 'Save changes'}</button>
         ${e.status === 'draft' ? '<button class="btn" data-act="send">Mark as sent</button>' : ''}
         ${e.status === 'sent' ? '<button class="btn good" data-act="accept">Customer accepted</button><button class="btn ghost" data-act="decline">Customer declined</button>' : ''}
         ${dep.amount && (e.status === 'sent' || e.status === 'accepted') ? '<button class="btn ghost" data-act="deposit">Request the deposit</button>' : ''}
-        <button class="btn ghost" data-act="print">Print or save PDF</button>
+        <button class="btn" data-act="preview">Preview &amp; send</button>
         ${!view.isNew ? '<button class="btn ghost" data-act="dup">Duplicate</button>' : ''}
         <button class="btn ghost" data-act="new">Start a new estimate</button>
         ${!view.isNew ? '<button class="btn danger-ghost" data-act="del">Delete estimate</button>' : ''}
@@ -291,6 +292,7 @@
     if (!validate(e)) return false;
     if (!e.title) e.title = e.items[0] ? e.items[0].desc : 'Tree work';
     if (!e.number) { e.number = 'EST-' + s.nextEstimateNo; s.nextEstimateNo++; }
+    MT.docs.keep(e, store.estimate(e.id)); // sent history, opens, and online approval are kept when you save
     if (statusChange) e.status = statusChange;
     if (statusChange === 'sent') e.sentAt = u.todayISO();
     const t = calc.estimate(e, s);
@@ -327,6 +329,7 @@
     }
     else if (act === 'decline') { if (commit('declined')) ui.toast('Estimate marked as declined'); }
     else if (act === 'print') { if (validate(e)) printEstimate(e); }
+    else if (act === 'preview') { if (commit()) MT.docs.open('estimate', e.id); }
     else if (act === 'deposit') { if (commit()) depositRequest(e); }
     else if (act === 'dup') {
       view.draft = Object.assign(JSON.parse(JSON.stringify(e)), { id: u.uid('e'), number: '', status: 'draft', sentAt: '', date: u.todayISO(), dealId: '' });
@@ -349,7 +352,23 @@
     }
   }
 
-  function printEstimate(e) {
+  function printEstimate(e) { MT.printDoc(estimateDoc(e)); }
+
+  /** What preview, PDF, email, and the customer's page need to know about an estimate. */
+  function estimateInfo(e) {
+    const s = store.state;
+    const dep = calc.deposit(e, s);
+    const d = e.dealId && store.deal(e.dealId);
+    const sq = dep.amount && d ? MT.pay.urlFor(d, 'deposit', dep.amount) : '';
+    return {
+      opts: estimateDoc(e), title: e.title, number: e.number, customerId: e.customerId, dealId: e.dealId,
+      total: dep.total, deposit: dep.amount, payUrl: sq || s.settings.payLink || '', payLabel: 'Pay the ' + u.money(dep.amount, true) + ' deposit online',
+      needsLink: dep.amount && d && !sq ? { amount: dep.amount, purpose: 'deposit', estimateId: e.id, ref: 'Deposit ' + e.number, name: 'Deposit: ' + e.title } : null,
+    };
+  }
+  MT.docs.builders.estimate = estimateInfo;
+
+  function estimateDoc(e) {
     const s = store.state;
     const c = store.customer(e.customerId) || {};
     const t = calc.estimate(e, s);
@@ -360,7 +379,7 @@
       lines.push({ desc: 'Crew time', qty: u.num(e.crewHours), unit: 'crew-hr', price: u.num(e.crewRate), total: t.labor });
       t.equipRows.forEach((r) => lines.push({ desc: r.name, qty: r.hours, unit: 'hr', price: r.rate, total: r.hours * r.rate }));
     }
-    MT.printDoc({
+    return {
       title: 'Estimate',
       meta: [['Number', e.number || 'Draft'], ['Date', u.fmtDate(e.date)], ['Valid until', u.fmtDate(u.addDays(e.date, u.num(e.validDays)))]],
       parties: [
@@ -375,7 +394,7 @@
       notes: e.notes,
       signature: true,
       footer: s.settings.estimateFooter || '',
-    });
+    };
   }
 
   /** Message asking the customer for the deposit, with the Pay online link; also records the deposit once it's in. */
@@ -453,7 +472,7 @@
         <thead><tr><th>Number</th><th>Customer</th><th>Job</th><th>Date</th><th class="num">Total</th><th class="num">Margin</th><th>Status</th></tr></thead>
         <tbody>${rows.map((e) => {
           const t = calc.estimate(e, s);
-          return `<tr class="click" data-id="${e.id}"><td><b>${u.esc(e.number)}</b></td><td>${u.esc(store.customerName(e.customerId))}</td><td>${u.esc(e.title)}</td><td>${u.fmtDate(e.date)}</td><td class="num">${u.money(t.total)}</td><td class="num">${u.pct(t.margin)}</td><td>${ui.badge(STATUS[e.status], STATUS_KIND[e.status])}</td></tr>`;
+          return `<tr class="click" data-id="${e.id}"><td><b>${u.esc(e.number)}</b></td><td>${u.esc(store.customerName(e.customerId))}</td><td>${u.esc(e.title)}</td><td>${u.fmtDate(e.date)}</td><td class="num">${u.money(t.total)}</td><td class="num">${u.pct(t.margin)}</td><td>${ui.badge(STATUS[e.status], STATUS_KIND[e.status])} ${MT.docs.badge(e)}</td></tr>`;
         }).join('') || `<tr><td colspan="7">${ui.empty(view.q || view.filter ? 'No estimates match your search.' : 'No estimates yet. Start one with New estimate.')}</td></tr>`}</tbody>
       </table></div></section>`;
     const qi = u.qs('#el-q', host);

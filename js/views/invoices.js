@@ -87,7 +87,7 @@
         <thead><tr><th>Invoice</th><th>Client</th><th>Job</th><th>Issued</th><th>Due</th><th class="num">Total</th><th class="num">Balance</th><th>Status</th></tr></thead>
         <tbody>${shown.map((x) => {
           const d = store.deal(x.dealId);
-          return `<tr class="click" data-id="${x.id}"><td><b>${u.esc(x.number || 'Draft')}</b></td><td>${u.esc(store.customerName(x.customerId))}</td><td>${u.esc(d ? d.title : '')}</td><td class="nowrap">${u.fmtDate(x.date)}</td><td class="nowrap">${u.fmtDate(x.dueDate)}</td><td class="num">${u.money(calc.invoiceTotals(x).total)}</td><td class="num">${calc.invoiceBalance(x) ? '<b>' + u.money(calc.invoiceBalance(x)) + '</b>' : '—'}</td><td>${badge(x)}</td></tr>`;
+          return `<tr class="click" data-id="${x.id}"><td><b>${u.esc(x.number || 'Draft')}</b></td><td>${u.esc(store.customerName(x.customerId))}</td><td>${u.esc(d ? d.title : '')}</td><td class="nowrap">${u.fmtDate(x.date)}</td><td class="nowrap">${u.fmtDate(x.dueDate)}</td><td class="num">${u.money(calc.invoiceTotals(x).total)}</td><td class="num">${calc.invoiceBalance(x) ? '<b>' + u.money(calc.invoiceBalance(x)) + '</b>' : '—'}</td><td>${badge(x)} ${MT.docs.badge(x)}</td></tr>`;
         }).join('') || `<tr><td colspan="8">${ui.empty(view.q || view.filter !== 'all' ? 'No invoices match.' : 'No invoices yet. Create one from a finished job.')}</td></tr>`}</tbody>
       </table></div></section>
       ${rows.length > shown.length ? `<p class="hint">Showing the latest ${shown.length} of ${rows.length}. Search to find older invoices.</p>` : ''}`;
@@ -224,9 +224,11 @@
             <div class="btn-row"><button class="btn ghost sm" id="iv-sqcopy">Copy pay link</button><a class="btn ghost sm" href="${u.esc(sqLink(stored, bal).url)}" target="_blank" rel="noopener">Open</a></div>`
           : `<p class="hint">Create a Square link for the exact balance. When the customer pays, the payment is recorded here on its own.</p><button class="btn ghost" id="iv-sqmk">Create Square pay link for ${u.money(bal, true)}</button>`}
         </div>` : ''}
+        ${stored ? MT.docs.trackHTML('invoice', stored) : ''}
         <div class="sum-actions">
           <button class="btn primary" id="iv-save">${saved ? 'Save changes' : 'Save invoice'}</button>
           ${!stored || stored.status === 'draft' ? '<button class="btn" id="iv-send">Mark as sent</button>' : ''}
+          <button class="btn" id="iv-preview">Preview &amp; send</button>
           <button class="btn ghost" id="iv-print">Print or save PDF</button>
           ${stored && bal > 0 && stored.status !== 'draft' ? '<button class="btn ghost" id="iv-remind">Copy payment reminder</button>' : ''}
           ${stored && stored.status !== 'void' ? '<button class="btn danger-ghost" id="iv-void">Void invoice</button>' : ''}
@@ -241,6 +243,7 @@
       if (status) { inv.status = status; if (status === 'sent') inv.sentAt = u.todayISO(); }
       const wasNew = inv.isNew;
       delete inv.isNew;
+      MT.docs.keep(inv, store.invoice(inv.id)); // sent history and customer activity are kept when you save
       const obj = JSON.parse(JSON.stringify(inv));
       const i = s.invoices.findIndex((x) => x.id === obj.id);
       if (i >= 0) s.invoices[i] = obj; else s.invoices.push(obj);
@@ -274,6 +277,7 @@
       q('#iv-save').addEventListener('click', () => { if (commit()) ui.toast('Invoice ' + inv.number + ' saved'); });
       const send = q('#iv-send'); if (send) send.addEventListener('click', () => { if (commit('sent')) ui.toast('Invoice ' + inv.number + ' marked as sent'); });
       q('#iv-print').addEventListener('click', () => printInvoice(inv));
+      q('#iv-preview').addEventListener('click', () => { if (commit()) MT.docs.open('invoice', inv.id); });
       const rem = q('#iv-remind'); if (rem) rem.addEventListener('click', async () => {
         if (MT.pay.ready()) { rem.disabled = true; try { await squareLink(); } catch (e) { /* the reminder still works with the saved link */ } rem.disabled = false; }
         reminder(store.invoice(inv.id));
@@ -332,14 +336,31 @@
     u.qs('#iv-line', root).addEventListener('click', () => { inv.items.push({ desc: '', qty: 1, unit: 'job', price: 0 }); renderEditor(root); const l = u.qsa('[data-item=desc]', root).pop(); if (l) l.focus(); });
   }
 
-  function printInvoice(inv) {
+  function printInvoice(inv) { MT.printDoc(invoiceDoc(inv)); }
+
+  /** What preview, PDF, email, and the customer's page need to know about an invoice. */
+  function invoiceInfo(inv) {
+    const d = store.deal(inv.dealId);
+    const stored = store.invoice(inv.id) || inv;
+    const t = calc.invoiceTotals(inv);
+    const bal = Math.max(0, t.total - calc.invoicePaid(stored));
+    const sq = sqLink(stored, bal);
+    return {
+      opts: invoiceDoc(inv), title: d ? d.title : 'Tree service', number: inv.number, customerId: inv.customerId, dealId: inv.dealId,
+      total: t.total, balance: bal, payUrl: bal > 0.005 && stored.status !== 'void' ? payLink(stored) : '', payLabel: 'Pay ' + u.money(bal, true) + ' online',
+      needsLink: bal >= 1 && d && !sq && stored.status !== 'void' ? { amount: Math.round(bal * 100) / 100, purpose: 'invoice', invoiceId: inv.id, ref: inv.number, name: 'Invoice ' + inv.number } : null,
+    };
+  }
+  MT.docs.builders.invoice = invoiceInfo;
+
+  function invoiceDoc(inv) {
     const c = store.customer(inv.customerId) || {};
     const d = store.deal(inv.dealId);
     const t = calc.invoiceTotals(inv);
     const stored = store.invoice(inv.id);
     const paid = stored ? calc.invoicePaid(stored) : 0;
     const status = stored ? calc.invoiceStatus(stored) : 'draft';
-    MT.printDoc({
+    return {
       title: 'Invoice',
       meta: [['Invoice', inv.number || 'Draft'], ['Date', u.fmtDate(inv.date)], ['Due', u.fmtDate(inv.dueDate)]],
       stamp: status === 'paid' ? 'Paid' : status === 'void' ? 'Void' : '',
@@ -352,7 +373,7 @@
       pay: payLink(inv) && t.total - paid > 0.005 && status !== 'void' ? { url: payLink(inv), label: 'Pay online', note: 'Balance due ' + u.money(Math.max(0, t.total - paid), true) + ' by ' + u.fmtDate(inv.dueDate) + '.' } : null,
       notes: inv.notes,
       footer: store.state.settings.estimateFooter || '',
-    });
+    };
   }
 
   const payLink = (inv) => {
