@@ -56,7 +56,7 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 | Tab | What it does |
 |---|---|
 | **Branding** | Business profile, logo, colors (presets, custom, or pulled from your logo), heading style, and yard address. |
-| **Integrations** | GitHub backup & sync, a website request form (free Google Sheets connector), Square CSV import, Google reviews (with your API key), and Yelp tracking. |
+| **Integrations** | GitHub backup & sync, a website request form (free Google Sheets connector), Square online payments (free Apps Script connector) and CSV import, Google reviews (with your API key), and Yelp tracking. |
 | **Phone app** | The web address with a QR code, install steps, crew view, sending a crew member their day, and importing their hours. |
 | **Settings** | Defaults, crew and roles, PIN lock, backups, and clearing the demo data. |
 
@@ -71,6 +71,16 @@ Everything is free and works on the Squarespace Basic plan. Setup steps are on t
 - **AI (optional):** add `AI_KEY` under the connector's Script properties (optional `AI_MODEL`, `AI_EFFORT`). The same buttons then write drafts with Claude instead of templates. Autopilot can prepare drafts after each weekly audit but never publishes. The key never leaves Google's servers.
 - **Where data lives:** SEO settings, approvals, and history are in the browser and in `data/seo.json` in the private data repository. Audit results stay in the connector sheet.
 - **Updating the connector:** when `js/seo-connector.js` changes, paste the new code into Apps Script and use Deploy → Manage deployments → Edit → New version (the web address stays the same). The audit rules live in `js/seo-audit.js`, so most improvements need no connector update.
+
+## Square online payments
+
+Setup steps are on **Integrations → Square**.
+
+- **Square connector:** a Google Apps Script web app ("Mammoth Square"). Your Square production access token is stored only in that script's Script properties (`SQUARE_TOKEN`). It's never in the browser, backups, or GitHub. Optional properties: `SQUARE_ENV=sandbox` (test mode) and `SQUARE_VERSION`.
+- **Pay links:** **Request the deposit**, each invoice, and payment reminders create a Square payment link for the exact amount. Links are reused rather than duplicated, and saved on the job (`deal.payLinks`).
+- **Automatic recording:** while the CRM is open, it checks unpaid links every 2 minutes. Each payment is recorded as a Square payment on the job and its invoice. A paid deposit also accepts the estimate and moves the job to Won.
+- **Other Square payments** (card reader, tap to pay): **Bring in other Square payments** opens the same matching screen as the CSV import. Already recorded payments are skipped, so nothing is counted twice.
+- **Updating the connector:** when `js/pay-connector.js` changes, paste the new code and use Deploy → Manage deployments → Edit → New version.
 
 ## First steps for real use
 
@@ -110,6 +120,8 @@ js/charts.js           Charts and growth rings
 js/media.js            Job cam storage and GitHub photo backup
 js/print.js            Printable estimates and invoices
 js/files.js            Files and contracts attached to jobs
+js/pay.js              Square pay links and automatic payment recording
+js/pay-connector.js    The Google Apps Script Square connector (copied in from Integrations)
 js/brand.js            Branding
 js/lock.js             PIN lock
 js/crewlink.js         Crew day links and texted hours

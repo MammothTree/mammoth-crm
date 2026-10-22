@@ -248,41 +248,50 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
       const payments = list.map((r) => ({ date: toISO(r[F.date]), amount: money(r[amtCol]), id: r[F.id] || (r[F.date] + '|' + r[amtCol] + '|' + (r[F.name] || '')), name: r[F.name] || '', desc: r[F.desc] || '' }))
         .filter((x) => x.amount > 0 && x.date && !sq.seenIds.includes(x.id));
       if (!payments.length) { ui.toast('No new payments in this file. Everything was already imported.', 'err'); return; }
-      const owing = s.deals.filter((d) => d.stage === 'won' && MT.calc.balance(d) > 0);
-      const opts = (x) => {
-        const c = x.name && s.customers.find((cc) => cc.name.toLowerCase() === x.name.toLowerCase());
-        const mine = c ? owing.filter((d) => d.customerId === c.id).sort((a, b) => Math.abs(MT.calc.balance(a) - x.amount) - Math.abs(MT.calc.balance(b) - x.amount)) : [];
-        const others = owing.filter((d) => !mine.includes(d)).slice(0, 40);
-        return { best: mine[0] && Math.abs(MT.calc.balance(mine[0]) - x.amount) < 1 ? mine[0].id : mine[0] ? mine[0].id : '', html: (mine.length ? '<optgroup label="This client">' + mine.map((d) => `<option value="${d.id}">${u.esc(d.title)} (${u.money(MT.calc.balance(d))} owed)</option>`).join('') + '</optgroup>' : '') + '<optgroup label="Other unpaid jobs">' + others.map((d) => `<option value="${d.id}">${u.esc(store.customerName(d.customerId) + ': ' + d.title)} (${u.money(MT.calc.balance(d))} owed)</option>`).join('') + '</optgroup>' };
-      };
-      ui.modal({
-        title: 'Match Square payments to jobs', size: 'lg',
-        body: `<p class="hint">${payments.length} new payments. Each one is matched to an unpaid job for the same client where possible. Change any match, or leave it on "Don't import".</p>
-          <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Customer</th><th class="num">Amount</th><th>Apply to job</th></tr></thead><tbody>
-          ${payments.map((x, i) => { const o = opts(x); return `<tr><td class="nowrap">${u.fmtDate(x.date)}</td><td>${u.esc(x.name || 'No name')}<div class="row-sub">${u.esc(x.desc)}</div></td><td class="num">${u.money(x.amount, true)}</td><td><select class="input" data-pi="${i}"><option value="">Don't import</option>${o.html.replace('value="' + o.best + '"', 'value="' + o.best + '" selected')}</select></td></tr>`; }).join('')}
-          </tbody></table></div>`,
-        actions: [{ label: 'Cancel' }, { label: 'Import matched payments', kind: 'primary', onClick: (b) => {
-          let n = 0, total = 0;
-          u.qsa('[data-pi]', b).forEach((sel) => {
-            const x = payments[+sel.dataset.pi];
-            sq.seenIds.push(x.id);
-            if (!sel.value) return;
-            const d = store.deal(sel.value);
-            const inv = store.invoicesFor(d.id).find((v) => MT.calc.invoiceBalance(v) > 0);
-            d.payments = d.payments || [];
-            d.payments.push({ id: u.uid('pay'), amount: x.amount, date: x.date, method: 'Square', invoiceId: inv ? inv.id : '', squareId: x.id });
-            n++; total += x.amount;
-          });
-          sq.lastImport = new Date().toISOString();
-          sq.imported = (sq.imported || 0) + n;
-          if (n) store.log('payment', 'Imported ' + n + ' Square payments (' + u.money(total) + ')');
-          store.save();
-          ui.toast(n ? n + ' payments imported (' + u.money(total) + ')' : 'Nothing imported');
-        } }],
-      });
+      matchSquarePayments(payments);
     }
   }
+
+  /** Lets you apply Square payments ({id, date, amount, name, desc}) to unpaid jobs. Used by CSV import and the live connector. */
+  function matchSquarePayments(payments) {
+    const s = store.state;
+    const sq = s.integrations.square;
+    if (!sq.seenIds) sq.seenIds = [];
+    const owing = s.deals.filter((d) => d.stage === 'won' && MT.calc.balance(d) > 0);
+    const opts = (x) => {
+      const c = x.name && s.customers.find((cc) => cc.name.toLowerCase() === x.name.toLowerCase());
+      const mine = c ? owing.filter((d) => d.customerId === c.id).sort((a, b) => Math.abs(MT.calc.balance(a) - x.amount) - Math.abs(MT.calc.balance(b) - x.amount)) : [];
+      const others = owing.filter((d) => !mine.includes(d)).slice(0, 40);
+      return { best: mine[0] && Math.abs(MT.calc.balance(mine[0]) - x.amount) < 1 ? mine[0].id : mine[0] ? mine[0].id : '', html: (mine.length ? '<optgroup label="This client">' + mine.map((d) => `<option value="${d.id}">${u.esc(d.title)} (${u.money(MT.calc.balance(d))} owed)</option>`).join('') + '</optgroup>' : '') + '<optgroup label="Other unpaid jobs">' + others.map((d) => `<option value="${d.id}">${u.esc(store.customerName(d.customerId) + ': ' + d.title)} (${u.money(MT.calc.balance(d))} owed)</option>`).join('') + '</optgroup>' };
+    };
+    ui.modal({
+      title: 'Match Square payments to jobs', size: 'lg',
+      body: `<p class="hint">${payments.length} new payments. Each one is matched to an unpaid job for the same client where possible. Change any match, or leave it on "Don't import".</p>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Customer</th><th class="num">Amount</th><th>Apply to job</th></tr></thead><tbody>
+        ${payments.map((x, i) => { const o = opts(x); return `<tr><td class="nowrap">${u.fmtDate(x.date)}</td><td>${u.esc(x.name || 'No name')}<div class="row-sub">${u.esc(x.desc)}</div></td><td class="num">${u.money(x.amount, true)}</td><td><select class="input" data-pi="${i}"><option value="">Don't import</option>${o.html.replace('value="' + o.best + '"', 'value="' + o.best + '" selected')}</select></td></tr>`; }).join('')}
+        </tbody></table></div>`,
+      actions: [{ label: 'Cancel' }, { label: 'Import matched payments', kind: 'primary', onClick: (b) => {
+        let n = 0, total = 0;
+        u.qsa('[data-pi]', b).forEach((sel) => {
+          const x = payments[+sel.dataset.pi];
+          sq.seenIds.push(x.id);
+          if (!sel.value) return;
+          const d = store.deal(sel.value);
+          const inv = store.invoicesFor(d.id).find((v) => MT.calc.invoiceBalance(v) > 0);
+          d.payments = d.payments || [];
+          d.payments.push({ id: u.uid('pay'), amount: x.amount, date: x.date, method: 'Square', invoiceId: inv ? inv.id : '', squareId: x.id });
+          n++; total += x.amount;
+        });
+        sq.lastImport = new Date().toISOString();
+        sq.imported = (sq.imported || 0) + n;
+        if (n) store.log('payment', 'Imported ' + n + ' Square payments (' + u.money(total) + ')');
+        store.save();
+        ui.toast(n ? n + ' payments imported (' + u.money(total) + ')' : 'Nothing imported');
+      } }],
+    });
+  }
   view.squareImport = squareImport;
+  view.matchSquarePayments = matchSquarePayments;
 
   /* ================= Render ================= */
   function stars(r) { const full = Math.round(r * 2) / 2; return '<span class="stars" aria-label="' + r + ' out of 5">' + [1, 2, 3, 4, 5].map((i) => `<i class="${full >= i ? 'on' : full >= i - 0.5 ? 'half' : ''}"></i>`).join('') + '</span>'; }
@@ -297,6 +306,7 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
     const s = store.state;
     const I = s.integrations;
     const w = I.website, g = I.google, y = I.yelp, sq = I.square;
+    const pc = MT.pay.cfg();
     const gkey = secrets.get().googleKey || '';
     const gh = sync.cfg();
     if (!w.key) { w.key = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10); store.save(true); }
@@ -329,8 +339,28 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         <p class="hint">${w.lastPull ? 'Last checked ' + new Date(w.lastPull).toLocaleString() + '. ' : ''}${w.imported ? w.imported + ' leads imported so far.' : ''} New leads land in Leads. The form also records where the visitor came from, so leads from Google search, Google Maps, or ads are labeled automatically.</p>
         <p class="hint">Note: website builders on budget plans (including Squarespace Basic) don't run custom scripts, so this form only works there on a plan with code blocks. On Squarespace Basic, use Squarespace's own form with a "How did you find us?" question, and pick the channel on each lead. See the SEO tab → Setup → Lead tracking.</p>`)}
 
-      ${card('square', 'Square', sq.lastImport ? 'Imported ' + u.fmtShort(sq.lastImport.slice(0, 10)) : 'Import ready', sq.lastImport ? 'good' : 'info', 'Bring in your Square customers and card payments.', `
-        <p>Square's live connection needs an always-on cloud connector (see below). Until then, import Square's exports. It takes about a minute:</p>
+      ${card('square', 'Square', pc.url ? (pc.lastError ? 'Needs attention' : 'Online payments on') : sq.lastImport ? 'Imported ' + u.fmtShort(sq.lastImport.slice(0, 10)) : 'Not connected', pc.url ? (pc.lastError ? 'warn' : 'good') : sq.lastImport ? 'good' : 'info', 'Customers pay deposits and invoices online by card, and the CRM marks them paid on its own.', `
+        <h4>Online payments (automatic)</h4>
+        <p>A free Google Apps Script keeps your Square access key on Google's servers. It's never stored in the CRM or on GitHub. The CRM uses it to:</p>
+        <ul class="bullets"><li>Create a Square pay link for the exact deposit or invoice balance (in <b>Request the deposit</b>, on each invoice, and in payment reminders).</li><li>Check every 2 minutes while the CRM is open, and record each online payment on the right job and invoice.</li><li>Bring in your other Square payments (card reader, tap to pay) for you to match to jobs.</li></ul>
+        <ol class="steps">
+          <li>Get your Square key: open the <a href="https://developer.squareup.com/apps" target="_blank" rel="noopener">Square Developer dashboard</a> and sign in with your normal Square account. Select <b>+ Create an application</b> and name it "Mammoth CRM". Open it, switch the toggle at the top to <b>Production</b>, and under <b>Credentials</b> copy the <b>Production Access token</b>.</li>
+          <li>Go to <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com → New project</a>. Name it "Mammoth Square". Delete what's there, paste this code, and save. <button class="btn ghost sm" data-copy="paycode">Copy code</button>
+            <pre class="code" id="cp-paycode">${u.esc(MT.payConnector.code(pc.key))}</pre></li>
+          <li>Select <b>Project Settings</b> (gear icon) → <b>Script properties</b> → <b>Add script property</b>. Property: <code>SQUARE_TOKEN</code>. Value: the token from step 1. Save.</li>
+          <li>Back in the Editor, choose <b>authorize</b> in the function menu and select <b>Run</b>. Allow access. If Google says the app isn't verified, select Advanced → Go to Mammoth Square. It's your own script.</li>
+          <li>Select <b>Deploy → New deployment → Web app</b>. Set "Execute as" to <b>Me</b> and "Who has access" to <b>Anyone</b>. Deploy and copy the Web app URL.</li>
+          <li>Paste the URL here and test it:
+            <div class="input-with-btn"><input class="input" id="pc-url" value="${u.esc(pc.url)}" placeholder="https://script.google.com/macros/s/…/exec"><button class="btn primary sm" id="pc-save">Save &amp; test</button></div></li>
+        </ol>
+        ${pc.locations && pc.locations.length > 1 ? `<label class="field"><span>Square location for payments</span><select class="input" id="pc-loc">${u.options(pc.locations.map((l) => ({ value: l.id, label: l.name + (l.status !== 'ACTIVE' ? ' (inactive)' : '') })), pc.locationId)}</select></label>` : ''}
+        ${pc.url ? `<p class="hint">${pc.env === 'sandbox' ? '<b>Sandbox (test mode):</b> no real money moves. ' : ''}${pc.locations && pc.locations.length ? 'Connected to ' + u.esc((pc.locations.find((l) => l.id === pc.locationId) || pc.locations[0]).name) + '. ' : ''}${pc.lastCheck ? 'Last checked ' + new Date(pc.lastCheck).toLocaleString() + '. ' : ''}${MT.pay.openLinks().length} pay ${MT.pay.openLinks().length === 1 ? 'link is' : 'links are'} waiting for payment.</p>
+          ${pc.lastError ? `<p class="hint neg">${u.esc(pc.lastError)}</p>` : ''}
+          <div class="btn-row"><button class="btn ghost" id="pc-check">Check for payments now</button><button class="btn ghost" id="pc-recent">Bring in other Square payments (last 30 days)</button><button class="btn danger-ghost" id="pc-off">Disconnect</button></div>` : ''}
+        <p class="hint">Square charges its normal online card fee on each payment. Customers pay on Square's secure checkout page and never see your CRM. When you change the code above (after a CRM update), paste it again and use Deploy → Manage deployments → Edit → New version. The web address stays the same.</p>
+
+        <h4 style="margin-top:18px">Import from a file</h4>
+        <p>Without the connector, you can import Square's exports. It takes about a minute:</p>
         <ul class="bullets">
           <li><b>Customers:</b> Square Dashboard → Customers → Export customers (CSV).</li>
           <li><b>Payments:</b> Square Dashboard → Transactions → choose dates → Export → Transactions CSV.</li>
@@ -379,16 +409,16 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
           <label class="field"><span>File path</span><input class="input" name="path" value="${u.esc(gh.path)}"></label>
         </div><div class="btn-row"><button class="btn ghost sm" id="gh-save">Save advanced settings</button></div></details>`)}
 
-      ${card('connector', 'Live sync connector', 'Planned', '', 'Real-time Square payments, Yelp reviews, and instant website leads.', `
-        <p>Square and Yelp only share data with a server, not with a CRM running in your browser. The next step is a small cloud connector: a free Cloudflare Worker that holds your Square and Yelp keys safely and passes new data to the CRM.</p>
-        <ul class="bullets"><li>Square: new payments appear on the right invoice automatically, and new Square customers become clients.</li><li>Yelp: rating and review count update daily.</li><li>Website: leads arrive instantly instead of every 10 minutes.</li></ul>
-        <p class="hint">What you'll need: a Cloudflare account (free), a Square Developer account (free), and a Yelp Fusion API key (free tier). Ask Claude to set it up when you're ready.</p>`)}
+      ${card('connector', 'Live sync connector', 'Planned', '', 'Yelp reviews and instant website leads.', `
+        <p>Yelp only shares its data with a server, not with a CRM running in your browser. A small free connector could hold a Yelp key and pass new data to the CRM.</p>
+        <ul class="bullets"><li>Yelp: rating and review count update daily.</li><li>Website: leads arrive instantly instead of every 10 minutes.</li></ul>
+        <p class="hint">Square payments already connect through the Square card above. Ask Claude to set this up when you're ready.</p>`)}
       </div>`;
 
     // expand/collapse
     u.qsa('[data-toggle]', root).forEach((b) => b.addEventListener('click', () => { view.open = view.open === b.dataset.toggle ? '' : b.dataset.toggle; view.render(root); }));
     const copy = (text, label) => u.copyText(text).then(() => ui.toast(label + ' copied'));
-    u.qsa('[data-copy]', root).forEach((b) => b.addEventListener('click', () => copy(u.qs('#cp-' + b.dataset.copy, root).textContent, b.dataset.copy === 'script' ? 'Code' : 'Form')));
+    u.qsa('[data-copy]', root).forEach((b) => b.addEventListener('click', () => copy(u.qs('#cp-' + b.dataset.copy, root).textContent, b.dataset.copy === 'form' ? 'Form' : 'Code')));
     u.qsa('[data-copytext]', root).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copytext, 'Review link')));
 
     // website
@@ -413,6 +443,34 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
       rd.readAsText(f);
       e.target.value = '';
     });
+    on('#pc-save', 'click', async (e) => {
+      const url = u.qs('#pc-url', root).value.trim();
+      if (url && !/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) { ui.toast('That doesn\'t look like an Apps Script web app URL. It should start with https://script.google.com/', 'err'); return; }
+      pc.url = url; pc.lastError = ''; store.save(true);
+      if (!url) { view.render(root); return; }
+      e.target.disabled = true; e.target.textContent = 'Testing…';
+      try {
+        const st = await MT.pay.test();
+        ui.toast('Square connected' + (st.env === 'sandbox' ? ' (sandbox test mode)' : '') + ': ' + ((st.locations || []).map((l) => l.name).join(', ') || 'no locations found'));
+      } catch (err) { pc.lastError = err.message; store.save(true); ui.toast(err.message, 'err'); }
+      view.render(root);
+    });
+    on('#pc-loc', 'change', (e) => { pc.locationId = e.target.value; store.save(true); ui.toast('New pay links will use this location'); });
+    on('#pc-check', 'click', async (e) => {
+      e.target.disabled = true; e.target.textContent = 'Checking…';
+      try { const n = await MT.pay.check(); if (!n) ui.toast(MT.pay.openLinks().length ? 'No new online payments yet' : 'No pay links are waiting for payment'); }
+      catch (err) { ui.toast(err.message, 'err'); }
+      view.render(root);
+    });
+    on('#pc-recent', 'click', async (e) => {
+      e.target.disabled = true; e.target.textContent = 'Getting payments…';
+      try {
+        const list = await MT.pay.recent(30);
+        if (list.length) matchSquarePayments(list); else ui.toast('No new Square payments in the last 30 days. Everything is already in the CRM.');
+      } catch (err) { ui.toast(err.message, 'err'); }
+      e.target.disabled = false; e.target.textContent = 'Bring in other Square payments (last 30 days)';
+    });
+    on('#pc-off', 'click', () => ui.confirm('Disconnect Square?', 'New pay links stop being created and payments are no longer checked. Links already sent still work in Square. Payments already recorded stay.', 'Disconnect', () => { pc.url = ''; pc.lastError = ''; store.save(true); view.render(root); }));
 
     // google
     on('#g-key-save', 'click', () => { secrets.set('googleKey', u.qs('#g-key', root).value.trim()); ui.toast('Google key saved in this browser'); });

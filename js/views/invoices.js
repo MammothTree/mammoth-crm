@@ -218,6 +218,12 @@
             <button class="btn ghost" id="iv-full" ${bal ? '' : 'disabled'}>Paid in full</button>
           </div>
         </div>
+        ${MT.pay.ready() && stored && bal > 0.005 && stored.status !== 'void' ? `<div class="sum-internal">
+          <h4>Square online payment</h4>
+          ${sqLink(stored, bal) ? `<p class="hint"><b class="paid">Pay link for ${u.money(bal, true)} is ready.</b> It prints on the invoice and goes in reminders. When the customer pays, this invoice is marked paid automatically.</p>
+            <div class="btn-row"><button class="btn ghost sm" id="iv-sqcopy">Copy pay link</button><a class="btn ghost sm" href="${u.esc(sqLink(stored, bal).url)}" target="_blank" rel="noopener">Open</a></div>`
+          : `<p class="hint">Create a Square link for the exact balance. When the customer pays, the payment is recorded here on its own.</p><button class="btn ghost" id="iv-sqmk">Create Square pay link for ${u.money(bal, true)}</button>`}
+        </div>` : ''}
         <div class="sum-actions">
           <button class="btn primary" id="iv-save">${saved ? 'Save changes' : 'Save invoice'}</button>
           ${!stored || stored.status === 'draft' ? '<button class="btn" id="iv-send">Mark as sent</button>' : ''}
@@ -248,12 +254,36 @@
       return true;
     }
 
+    /** Square link for this invoice's current balance (made once, reused); also saved as the invoice's pay link. */
+    async function squareLink() {
+      const st = store.invoice(inv.id);
+      const deal = st && store.deal(st.dealId);
+      const bal = st ? calc.invoiceBalance(st) : 0;
+      if (!deal || !(bal >= 1)) return null;
+      let l = sqLink(st, bal);
+      if (!l) {
+        MT.pay.cancel(deal, 'invoice', st.id); // an older link for a different amount
+        l = await MT.pay.link(deal, { amount: bal, purpose: 'invoice', invoiceId: st.id, ref: st.number, name: 'Invoice ' + st.number });
+      }
+      if (st.payLink !== l.url) { st.payLink = l.url; inv.payLink = l.url; store.save(true); }
+      return l;
+    }
+
     function bindSummary() {
       const q = (sel) => u.qs(sel, root);
       q('#iv-save').addEventListener('click', () => { if (commit()) ui.toast('Invoice ' + inv.number + ' saved'); });
       const send = q('#iv-send'); if (send) send.addEventListener('click', () => { if (commit('sent')) ui.toast('Invoice ' + inv.number + ' marked as sent'); });
       q('#iv-print').addEventListener('click', () => printInvoice(inv));
-      const rem = q('#iv-remind'); if (rem) rem.addEventListener('click', () => reminder(store.invoice(inv.id)));
+      const rem = q('#iv-remind'); if (rem) rem.addEventListener('click', async () => {
+        if (MT.pay.ready()) { rem.disabled = true; try { await squareLink(); } catch (e) { /* the reminder still works with the saved link */ } rem.disabled = false; }
+        reminder(store.invoice(inv.id));
+      });
+      const mk = q('#iv-sqmk'); if (mk) mk.addEventListener('click', async () => {
+        mk.disabled = true; mk.textContent = 'Creating…';
+        try { await squareLink(); ui.toast('Square pay link created'); } catch (e) { ui.toast('Square pay link not created: ' + e.message, 'err'); }
+        renderEditor(root);
+      });
+      const cp = q('#iv-sqcopy'); if (cp) cp.addEventListener('click', () => { const st = store.invoice(inv.id); const l = sqLink(st, calc.invoiceBalance(st)); if (l) u.copyText(l.url).then(() => ui.toast('Pay link copied')); });
       const vd = q('#iv-void'); if (vd) vd.addEventListener('click', () => ui.confirm('Void ' + inv.number + '?', 'A voided invoice stays on record but no longer counts as owed.', 'Void invoice', () => { inv.status = 'void'; commit(); ui.toast('Invoice voided'); }));
       const del = q('#iv-del'); if (del) del.addEventListener('click', () => ui.confirm('Delete ' + inv.number + '?', 'The invoice is removed. Payments stay recorded on the job.', 'Delete invoice', () => {
         const deal = store.deal(inv.dealId);
@@ -325,7 +355,15 @@
     });
   }
 
-  const payLink = (inv) => String((inv && inv.payLink) || store.state.settings.payLink || '').trim();
+  const payLink = (inv) => {
+    const l = inv && sqLink(inv, calc.invoiceBalance(inv));
+    return String((l && l.url) || (inv && inv.payLink) || store.state.settings.payLink || '').trim();
+  };
+  /** The open Square link made for this invoice and this exact balance. */
+  function sqLink(inv, bal) {
+    const d = inv && store.deal(inv.dealId);
+    return d ? MT.pay.findLink(d, 'invoice', Math.round(bal * 100) / 100, inv.id) : null;
+  }
 
   function reminder(inv) {
     const c = store.customer(inv.customerId) || {};

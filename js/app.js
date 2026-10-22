@@ -144,6 +144,12 @@
     window.addEventListener('online', catchUp);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') catchUp(); });
     setInterval(() => { if (document.visibilityState === 'visible') catchUp(); }, 60000);
+    // Square pay links: check for online payments on open and every couple of minutes while the CRM is on screen.
+    if (MT.pay) {
+      setTimeout(() => MT.pay.autoCheck(), 5000);
+      setInterval(() => { if (document.visibilityState === 'visible') MT.pay.autoCheck(); }, 60000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(() => MT.pay.autoCheck(), 3000); });
+    }
     // Website leads: check on open, then every 10 minutes while the CRM is open.
     if (MT.views.integrations && MT.views.integrations.autoPull) {
       setTimeout(() => MT.views.integrations.autoPull(), 4000);

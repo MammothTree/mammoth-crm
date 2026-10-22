@@ -111,15 +111,19 @@
       setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
     },
     copyText(text) {
-      if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); } finally { ta.remove(); }
-      return Promise.resolve();
+      const legacy = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) { /* nothing more we can do */ } finally { ta.remove(); }
+        return Promise.resolve();
+      };
+      // The clipboard API can refuse after a wait (e.g. creating a pay link first); fall back to the older method.
+      if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).catch(legacy);
+      return legacy();
     },
     options(list, selected, placeholder) {
       let h = placeholder != null ? '<option value="">' + u.esc(placeholder) + '</option>' : '';

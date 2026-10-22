@@ -354,6 +354,7 @@
     const c = store.customer(e.customerId) || {};
     const t = calc.estimate(e, s);
     const dep = calc.deposit(e, s);
+    const depUrl = (dep.amount && e.dealId && store.deal(e.dealId) && MT.pay.urlFor(store.deal(e.dealId), 'deposit', dep.amount)) || s.settings.payLink || '';
     const lines = e.items.map((it) => ({ desc: it.desc, qty: it.qty, unit: it.unit, price: u.num(it.price), total: u.num(it.qty) * u.num(it.price) }));
     if (e.billTM) {
       lines.push({ desc: 'Crew time', qty: u.num(e.crewHours), unit: 'crew-hr', price: u.num(e.crewRate), total: t.labor });
@@ -370,7 +371,7 @@
       extraRows: [t.surcharge ? ['Site difficulty adjustment', t.surcharge] : null, t.disposal ? ['Disposal & dump fees', t.disposal] : null].filter(Boolean),
       totals: [['Subtotal', t.subtotal], t.discount ? ['Discount', -t.discount] : null, t.tax ? ['Sales tax (' + e.taxRate + '%)', t.tax] : null, ['Total', t.total, true],
         dep.amount ? ['Deposit to book the job', dep.amount] : null, dep.amount ? ['Balance due on completion', dep.balance] : null].filter(Boolean),
-      pay: s.settings.payLink ? { url: s.settings.payLink, label: dep.amount ? 'Pay your deposit online' : 'Pay online', note: dep.amount ? 'Your job is scheduled once the ' + u.money(dep.amount, true) + ' deposit is received.' : '' } : null,
+      pay: depUrl ? { url: depUrl, label: dep.amount ? 'Pay your deposit online' : 'Pay online', note: dep.amount ? 'Your job is scheduled once the ' + u.money(dep.amount, true) + ' deposit is received.' : '' } : null,
       notes: e.notes,
       signature: true,
       footer: s.settings.estimateFooter || '',
@@ -385,27 +386,50 @@
     const dep = calc.deposit(e, s);
     const d = store.deal(e.dealId);
     const paid = d ? u.sum(d.payments || [], (x) => x.amount) : 0;
-    const link = s.settings.payLink;
-    const text = `Hi ${u.firstName(c.name)},\n\nThank you for choosing ${co.name}! To get "${e.title}" on our schedule, we ask for a deposit of ${u.money(dep.amount, true)} (estimate ${e.number}, total ${u.money(dep.total, true)}). The remaining ${u.money(dep.balance, true)} is due when the work is done.\n\n${link ? 'You can pay securely online here:\n' + link + '\n\nOr pay by check, cash, or Zelle.' : 'You can pay by card, check, cash, or Zelle.'}\n\nQuestions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`;
+    const auto = MT.pay.ready() && !!d;
+    let link = (auto && MT.pay.urlFor(d, 'deposit', dep.amount)) || s.settings.payLink || '';
+    const message = () => `Hi ${u.firstName(c.name)},\n\nThank you for choosing ${co.name}! To get "${e.title}" on our schedule, we ask for a deposit of ${u.money(dep.amount, true)} (estimate ${e.number}, total ${u.money(dep.total, true)}). The remaining ${u.money(dep.balance, true)} is due when the work is done.\n\n${link ? 'You can pay securely online here:\n' + link + '\n\nOr pay by check, cash, or Zelle.' : 'You can pay by card, check, cash, or Zelle.'}\n\nQuestions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`;
     const subject = 'Deposit for ' + e.title + ' (' + e.number + ')';
+    let box = null;
+    const hasSquare = () => auto && !!MT.pay.urlFor(d, 'deposit', dep.amount);
+    const draw = () => {
+      u.qs('.prev-body', box).textContent = message();
+      const st = u.qs('#dr-sq', box);
+      if (st) st.innerHTML = hasSquare() ? `<b class="paid">Square pay link for ${u.money(dep.amount, true)} is in the message.</b> When the customer pays, the CRM records it on this job automatically.` : `<button class="btn ghost sm" type="button" id="dr-mk">Create a Square pay link for ${u.money(dep.amount, true)}</button> <span class="hint">Or it's created when you text, email, or copy.</span>`;
+      const mk = u.qs('#dr-mk', box);
+      if (mk) mk.addEventListener('click', () => ensure().catch(() => {}));
+    };
+    // With the Square connector, every message carries a pay link for the exact deposit.
+    async function ensure() {
+      if (!auto || hasSquare()) return;
+      ui.toast('Creating the Square pay link…');
+      try { link = (await MT.pay.link(d, { amount: dep.amount, purpose: 'deposit', estimateId: e.id, ref: 'Deposit ' + e.number, name: 'Deposit: ' + e.title })).url; draw(); }
+      catch (err) { ui.toast('Square pay link not created: ' + err.message, 'err'); throw err; }
+    }
     ui.modal({
       title: 'Request the deposit',
-      body: `${!link ? '<p class="hint">Tip: add your Square payment link in Settings → Defaults so customers can pay online from this message.</p>' : ''}
+      body: `${auto ? '<p class="dep-line" id="dr-sq"></p>' : !link ? '<p class="hint">Tip: connect Square under Integrations → Square (or add a payment link in Settings → Defaults) so customers can pay online from this message.</p>' : ''}
         ${paid ? `<p class="hint">${u.money(paid, true)} has already been recorded on this job.</p>` : ''}
-        <div class="preview"><div class="prev-subj">${u.esc(subject)}</div><div class="prev-body">${u.esc(text)}</div></div>`,
+        <div class="preview"><div class="prev-subj">${u.esc(subject)}</div><div class="prev-body"></div></div>`,
+      onMount(b) { box = b; draw(); },
       actions: [
         { label: 'Deposit received', kind: 'ghost', left: true, onClick: () => {
           if (!d) { ui.toast('Save the estimate first.', 'err'); return false; }
           d.payments = d.payments || [];
           d.payments.push({ id: u.uid('pay'), amount: dep.amount, date: u.todayISO(), method: link ? 'Square' : 'Check', invoiceId: '', deposit: true });
-          if (e.status !== 'accepted') { view.draft.status = 'accepted'; commit('accepted'); }
+          MT.pay.cancel(d, 'deposit'); // so the open Square link can't be paid a second time
+          if (e.status !== 'accepted') commit('accepted');
           store.log('payment', 'Deposit of ' + u.money(dep.amount, true) + ' received from ' + store.customerName(e.customerId) + ' for "' + e.title + '"', { customerId: e.customerId, dealId: d.id });
           store.save();
           ui.toast('Deposit recorded on the job. Change the method in the deal if needed.');
         } },
-        { label: 'Text', kind: 'ghost', keepOpen: true, onClick: () => { window.location.href = 'sms:' + encodeURIComponent(c.phone || '') + '?&body=' + encodeURIComponent(text); } },
-        { label: 'Email', kind: 'ghost', keepOpen: true, onClick: () => { window.location.href = 'mailto:' + encodeURIComponent(c.email || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text); } },
-        { label: 'Copy message', kind: 'primary', onClick: () => { u.copyText(text).then(() => ui.toast('Message copied')); store.log('message', 'Deposit request for ' + e.number, { customerId: e.customerId, dealId: e.dealId }); store.save(true); } },
+        { label: 'Text', kind: 'ghost', keepOpen: true, onClick: async () => { try { await ensure(); } catch (err) { return; } window.location.href = 'sms:' + encodeURIComponent(c.phone || '') + '?&body=' + encodeURIComponent(message()); } },
+        { label: 'Email', kind: 'ghost', keepOpen: true, onClick: async () => { try { await ensure(); } catch (err) { return; } window.location.href = 'mailto:' + encodeURIComponent(c.email || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message()); } },
+        { label: 'Copy message', kind: 'primary', keepOpen: true, onClick: async (b) => {
+          try { await ensure(); } catch (err) { return; }
+          u.copyText(message()).then(() => ui.toast('Message copied'));
+          store.log('message', 'Deposit request for ' + e.number, { customerId: e.customerId, dealId: e.dealId }); store.save(true);
+        } },
       ],
     });
   }
