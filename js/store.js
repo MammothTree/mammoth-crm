@@ -148,6 +148,8 @@
     const keepDeal = new Set(), keepCust = new Set();
     mine(s.deals).concat(mine(s.estimates), mine(s.invoices), mine(s.jobFolders), (s.jobFolders || []).filter((f) => isSample(f) && hasOwnMedia(f)))
       .forEach((r) => { if (r.customerId) keepCust.add(r.customerId); if (r.dealId) keepDeal.add(r.dealId); });
+    // A sample job you attached your own files to is kept.
+    s.deals.forEach((d) => { if (isSample(d) && (d.files || []).length) keepDeal.add(d.id); });
     s.deals.forEach((d) => { if (keepDeal.has(d.id) && d.customerId) keepCust.add(d.customerId); });
 
     s.deals = s.deals.filter((d) => !isSample(d) || keepDeal.has(d.id));
@@ -335,6 +337,15 @@
       laborCost, equipCost, addonCost, cost, profit, margin: revenue ? profit / revenue : 0,
       effectiveRate: crewHours ? (revenue - disposal) / crewHours : 0,
     };
+  };
+
+  /** Deposit asked for to book an estimate's job: a percent of the total or a fixed amount (whole dollars, never above the total). */
+  calc.deposit = function (est, state) {
+    const total = calc.estimate(est, state).total;
+    const v = u.num(est.deposit);
+    if (!(v > 0) || !(total > 0)) return { amount: 0, balance: total, total };
+    const amount = Math.min(total, Math.round(est.depositType === 'amt' ? v : (total * Math.min(v, 100)) / 100));
+    return { amount, balance: total - amount, total };
   };
 
   calc.addonPrice = (a) => u.num(a.cost) * (1 + u.num(a.markup) / 100);

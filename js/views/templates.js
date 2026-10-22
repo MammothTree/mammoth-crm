@@ -8,8 +8,8 @@
   const FIELDS = [
     ['customer.firstName', 'First name'], ['customer.name', 'Full name'], ['customer.address', 'Address'], ['customer.phone', 'Customer phone'],
     ['deal.title', 'Job title'], ['deal.value', 'Deal value'], ['deal.balance', 'Balance due'], ['deal.scheduledDate', 'Job date'],
-    ['estimate.number', 'Estimate #'], ['estimate.total', 'Estimate total'],
-    ['company.name', 'Company name'], ['company.phone', 'Company phone'], ['company.reviewLink', 'Review link'], ['invoice.number', 'Invoice #'], ['invoice.balance', 'Invoice balance'], ['invoice.dueDate', 'Invoice due date'], ['owner.name', 'Your name'], ['today', 'Today\'s date'],
+    ['estimate.number', 'Estimate #'], ['estimate.total', 'Estimate total'], ['estimate.deposit', 'Deposit'], ['estimate.balance', 'Balance after deposit'],
+    ['company.name', 'Company name'], ['company.phone', 'Company phone'], ['company.reviewLink', 'Review link'], ['company.payLink', 'Pay online link'], ['invoice.number', 'Invoice #'], ['invoice.balance', 'Invoice balance'], ['invoice.dueDate', 'Invoice due date'], ['owner.name', 'Your name'], ['today', 'Today\'s date'],
   ];
 
   const view = { title: 'Templates', selected: null, customerId: '', dealId: '', cat: '' };
@@ -25,7 +25,8 @@
       'customer.firstName': c ? u.firstName(c.name) : '', 'customer.name': c ? c.name : '', 'customer.address': c ? c.address + (c.city ? ', ' + c.city : '') : '', 'customer.phone': c ? c.phone : '',
       'deal.title': d ? d.title : '', 'deal.value': d ? u.money(d.value) : '', 'deal.balance': d ? u.money(d.stage === 'won' ? calc.balance(d) : d.value, true) : '', 'deal.scheduledDate': d && d.scheduledDate ? u.fmtDate(d.scheduledDate, { weekday: 'long', month: 'long', day: 'numeric' }) : '',
       'estimate.number': e ? e.number : '', 'estimate.total': e ? u.money(calc.estimate(e, s).total, true) : '',
-      'company.name': co.name, 'company.phone': co.phone,
+      'estimate.deposit': e && calc.deposit(e, s).amount ? u.money(calc.deposit(e, s).amount, true) : '', 'estimate.balance': e ? u.money(calc.deposit(e, s).balance, true) : '',
+      'company.name': co.name, 'company.phone': co.phone, 'company.payLink': (inv && inv.payLink) || s.settings.payLink || '',
       'company.reviewLink': co.reviewLink || (s.integrations && s.integrations.google && s.integrations.google.reviewUrl) || '',
       'invoice.number': inv ? inv.number : '', 'invoice.balance': inv ? u.money(calc.invoiceBalance(inv), true) : '', 'invoice.dueDate': inv ? u.fmtDate(inv.dueDate) : '', 'owner.name': co.owner, today: u.fmtDate(u.todayISO(), { month: 'long', day: 'numeric', year: 'numeric' }),
     };

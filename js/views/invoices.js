@@ -184,6 +184,7 @@
               <label class="field"><span>Discount ($)</span><input class="input" type="number" min="0" step="any" data-k="discount" value="${u.esc(inv.discount)}"></label>
               <label class="field"><span>Sales tax (%)</span><input class="input" type="number" min="0" step="0.01" data-k="taxRate" value="${u.esc(inv.taxRate)}"></label>
               <label class="field span-2"><span>Notes and payment terms</span><textarea class="input" rows="3" data-k="notes">${u.esc(inv.notes)}</textarea></label>
+              <label class="field span-2"><span>Pay online link for this invoice</span><input class="input" type="url" data-k="payLink" value="${u.esc(inv.payLink || '')}" placeholder="${u.esc(s.settings.payLink || 'https://square.link/u/…')}"><small>${s.settings.payLink ? 'Leave blank to use your link from Settings. ' : 'Paste a Square payment link (or set one for everything in Settings → Defaults). '}It prints on the invoice and goes in payment reminders.</small></label>
             </div>
           </section>
         </div>
@@ -317,18 +318,22 @@
         { heading: 'Job', lines: [d && d.scheduledDate ? 'Completed ' + u.fmtDate(d.scheduledDate) : ''], bold: d ? d.title : '' },
       ],
       lines: inv.items.map((x) => ({ desc: x.desc, qty: x.qty, unit: x.unit, price: u.num(x.price), total: u.num(x.qty) * u.num(x.price) })),
-      totals: [['Subtotal', t.subtotal], t.discount ? ['Discount', -t.discount] : null, t.tax ? ['Sales tax (' + inv.taxRate + '%)', t.tax] : null, ['Total', t.total], paid ? ['Paid', -paid] : null, ['Balance due', Math.max(0, t.total - paid), true]].filter(Boolean),
+      totals: [['Subtotal', t.subtotal], t.discount ? ['Discount', -t.discount] : null, t.tax ? ['Sales tax (' + inv.taxRate + '%)', t.tax] : null, ['Total', t.total], paid ? ['Deposits & payments received', -paid] : null, ['Balance due', Math.max(0, t.total - paid), true]].filter(Boolean),
+      pay: payLink(inv) && t.total - paid > 0.005 && status !== 'void' ? { url: payLink(inv), label: 'Pay online', note: 'Balance due ' + u.money(Math.max(0, t.total - paid), true) + ' by ' + u.fmtDate(inv.dueDate) + '.' } : null,
       notes: inv.notes,
       footer: store.state.settings.estimateFooter || '',
     });
   }
+
+  const payLink = (inv) => String((inv && inv.payLink) || store.state.settings.payLink || '').trim();
 
   function reminder(inv) {
     const c = store.customer(inv.customerId) || {};
     const co = store.state.settings.company;
     const bal = calc.invoiceBalance(inv);
     const late = inv.dueDate < u.todayISO();
-    const text = `Hi ${u.firstName(c.name)},\n\nA friendly reminder that invoice ${inv.number} for ${u.money(bal, true)} ${late ? 'was due on ' + u.fmtDate(inv.dueDate) : 'is due on ' + u.fmtDate(inv.dueDate)}. You can pay by check, card, Zelle, or ACH.\n\nIf you've already sent it, thank you, and please ignore this note. Questions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`;
+    const link = payLink(inv);
+    const text = `Hi ${u.firstName(c.name)},\n\nA friendly reminder that invoice ${inv.number} for ${u.money(bal, true)} ${late ? 'was due on ' + u.fmtDate(inv.dueDate) : 'is due on ' + u.fmtDate(inv.dueDate)}. ${link ? 'You can pay securely online here:\n' + link + '\n\nOr pay by check, Zelle, or ACH.' : 'You can pay by check, card, Zelle, or ACH.'}\n\nIf you've already sent it, thank you, and please ignore this note. Questions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`;
     ui.modal({
       title: 'Payment reminder',
       body: `<div class="preview"><div class="prev-subj">Invoice ${u.esc(inv.number)} reminder</div><div class="prev-body">${u.esc(text)}</div></div>`,

@@ -555,6 +555,18 @@ mark { background: var(--warn-soft); color: var(--warn); border-radius: 3px; pad
 .pay-sum { display: flex; justify-content: space-between; gap: 10px; font-size: 0.9rem; margin: 6px 0 12px; }
 .pay-sum .owed { color: var(--warn); }
 .pay-sum .paid { color: var(--good); }
+.dep-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin: 0 0 10px; border-radius: 8px; background: var(--surface-2, rgba(0,0,0,.04)); font-size: 0.9rem; }
+.dep-line .paid { color: var(--good); }
+.dep-line .owed { color: var(--warn); }
+.dep-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.att-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.att-row { display: grid; grid-template-columns: auto 1fr auto 34px; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.att-icon { font-size: 0.68rem; font-weight: 800; letter-spacing: .04em; padding: 4px 6px; border-radius: 5px; background: var(--canopy); color: #fff; }
+.att-name { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.att-meta { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.files-box { margin-top: 14px; }
+.files-box h4 { margin: 0 0 8px; }
+@media (max-width: 560px) { .att-row { grid-template-columns: auto 1fr 34px; } .att-meta { display: none; } }
 .pay-add .input { height: 40px; }
 .pay-add { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; }
 .tag.owed { background: var(--warn-soft); color: var(--warn); }
@@ -1159,6 +1171,10 @@ body.is-locked .shell, body.is-locked .nav-scrim { visibility: hidden; }
   .pr-totals td:first-child { color: #555; padding-right: 30px; }
   .pr-totals .grand td { font-size: 14pt; font-weight: 800; color: #111; border-top: 2px solid var(--pr-color, #24563a); padding-top: 8px; }
   .pr-notes { margin-top: 22px; font-size: 10pt; }
+  .pr-pay { margin-top: 18px; padding: 10px 14px; border: 1.5px solid var(--pr-color); border-radius: 6px; font-size: 10pt; display: flex; flex-direction: column; gap: 2px; }
+  .pr-pay b { color: var(--pr-color); font-size: 11pt; }
+  .pr-pay a { color: #111; word-break: break-all; }
+  .pr-pay span { color: #555; font-size: 9pt; }
   .pr-sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 10pt; }
   .pr-foot { margin-top: 28px; font-size: 9pt; color: #666; text-align: center; }
   .pr-pl { width: 100%; max-width: 520px; border-collapse: collapse; margin-top: 18px; font-size: 10.5pt; }

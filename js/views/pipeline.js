@@ -101,6 +101,7 @@
     const custs = s.customers.slice().sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ value: c.id, label: c.name + (c.company ? ' (' + c.company + ')' : '') }));
     const est = d.estimateId ? store.estimate(d.estimateId) : null;
     const estCost = est ? calc.estimate(est, s).cost : null;
+    const dep = est ? calc.deposit(est, s) : { amount: 0 };
     const oh = calc.overhead(s);
     let pays = (d.payments || []).map((x) => Object.assign({}, x));
     ui.modal({
@@ -130,6 +131,7 @@
         </div>
         <div class="profit-line" id="dm-profit"></div>
         <h4>Payments</h4>
+        ${dep.amount ? '<div class="dep-line" id="dm-dep"></div>' : ''}
         <div id="dm-pays"></div>
         <div class="pay-add">
           <label class="field"><span>Amount ($)</span><input class="input" type="number" min="0" step="0.01" id="pay-amt"></label>
@@ -138,6 +140,10 @@
           <button class="btn ghost" type="button" id="pay-add">Record payment</button>
           <button class="btn ghost" type="button" id="pay-full">Paid in full</button>
         </div>
+      </section>
+      <section class="files-box">
+        <h4>Files &amp; contract</h4>
+        ${existing ? '<div id="dm-files"></div>' : '<p class="hint">Save the deal first, then attach the contract or other files here.</p>'}
       </section>`,
       onMount(b, close) {
         const stageSel = u.qs('[name=stage]', b);
@@ -157,6 +163,13 @@
             `<li><span>${u.fmtDate(x.date)}</span><span>${u.esc(x.method)}</span><b>${u.money(x.amount, true)}</b><button class="icon-btn" type="button" data-del-pay="${x.id}" aria-label="Remove payment">&times;</button></li>`).join('') + '</ul>' : '<p class="hint">No payments recorded.</p>') +
             `<div class="pay-sum"><span>Paid ${u.money(paid, true)} of ${u.money(value, true)}</span>${bal > 0 ? '<b class="owed">' + u.money(bal, true) + ' owed</b>' : value ? '<b class="paid">Paid in full</b>' : ''}</div>`;
           u.qs('#pay-amt', b).placeholder = bal ? bal.toFixed(2) : '';
+          const depEl = u.qs('#dm-dep', b);
+          if (depEl) {
+            const got = paid >= dep.amount - 0.005;
+            depEl.innerHTML = `<span>Deposit to book: <b>${u.money(dep.amount, true)}</b></span>${got ? '<b class="paid">Received</b>' : `<span><b class="owed">${paid ? u.money(dep.amount - paid, true) + ' still due' : 'Not received yet'}</b> <button class="btn ghost sm" type="button" id="dm-depgo">Deposit received</button></span>`}`;
+            const go = u.qs('#dm-depgo', b);
+            if (go) go.addEventListener('click', () => { u.qs('#pay-amt', b).value = (dep.amount - paid).toFixed(2); addPay(dep.amount - paid); });
+          }
           u.qsa('[data-del-pay]', b).forEach((x) => x.addEventListener('click', () => { pays = pays.filter((y) => y.id !== x.dataset.delPay); renderMoney(); }));
           const cost = costIn.value !== '' ? u.num(costIn.value) : estCost;
           u.qs('#dm-profit', b).innerHTML = cost == null ? '<span class="hint">Add a job cost to see this job\'s profit.</span>'
@@ -180,11 +193,13 @@
         });
         [valueIn, costIn].forEach((x) => x.addEventListener('input', renderMoney));
         renderMoney();
+        const fh = u.qs('#dm-files', b);
+        if (fh) MT.files.panel(fh, existing);
         const link = u.qs('[data-open-est]', b);
         if (link) link.addEventListener('click', (e) => { e.preventDefault(); close(); MT.app.go('estimator', { id: link.dataset.openEst }); });
       },
       actions: [
-        existing ? { label: 'Delete', kind: 'danger-ghost', left: true, onClick: () => { ui.confirm('Delete deal?', 'This removes "' + d.title + '" permanently.', 'Delete deal', () => { store.remove('deals', d.id); store.save(); ui.toast('Deal deleted'); }); } } : null,
+        existing ? { label: 'Delete', kind: 'danger-ghost', left: true, onClick: () => { ui.confirm('Delete deal?', 'This removes "' + d.title + '" permanently.', 'Delete deal', () => { MT.files.removeAll(existing); store.remove('deals', d.id); store.save(); ui.toast('Deal deleted'); }); } } : null,
         existing ? { label: 'Job photos', kind: 'ghost', onClick: () => MT.views.jobcam.openFolderForDeal(d.id) } : null,
         existing && existing.stage === 'won' ? { label: store.invoicesFor(existing.id).length ? 'Open invoice' : 'Create invoice', kind: 'ghost', onClick: (b) => { if (!save(b)) return false; const inv = store.invoicesFor(existing.id)[0]; if (inv) MT.app.go('invoices', { id: inv.id }); else MT.app.go('invoices', { dealId: existing.id }); } } : null,
         existing && !est ? { label: 'Create estimate', kind: 'ghost', onClick: (b) => { if (!save(b)) return false; MT.app.go('estimator', { dealId: d.id }); } } : null,

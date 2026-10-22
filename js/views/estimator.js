@@ -16,6 +16,7 @@
       validDays: s.settings.estimateValidDays || 30, status: 'draft', items: [], billTM: false,
       crewHours: 4, crewRate: oh.recommendedRateRounded, equipment: [], disposal: 0, complexity: 0, discount: 0,
       taxRate: s.settings.taxRate || 0, notes: '', sentAt: '',
+      depositType: 'pct', deposit: u.num(s.settings.depositPct) || 0,
     }, preset || {});
   }
 
@@ -133,12 +134,32 @@
             <label class="field span-2"><span>Notes for the customer</span><textarea class="input" rows="3" data-k="notes">${u.esc(e.notes)}</textarea></label>
           </div>
         </section>
+
+        <section class="panel">
+          <div class="panel-head"><h3>Deposit &amp; payment</h3></div>
+          <div class="form-grid">
+            <div class="field span-2"><span>Deposit to book the job</span>
+              <div class="dep-fields">
+                <input class="input" type="number" min="0" step="any" data-k="deposit" value="${u.esc(e.deposit || 0)}" aria-label="Deposit">
+                <select class="input" data-k="depositType" aria-label="Deposit type">${u.options([{ value: 'pct', label: '% of the total' }, { value: 'amt', label: 'dollars' }], e.depositType || 'pct')}</select>
+              </div>
+              <small>0 = no deposit. The printed estimate shows the deposit and the balance due on completion${s.settings.payLink ? ', with your Pay online link' : ''}.${s.settings.payLink ? '' : ' Add your Square payment link in Settings to print a Pay online link.'}</small>
+            </div>
+          </div>
+        </section>
+
+        ${e.dealId && store.deal(e.dealId) ? `<section class="panel">
+          <div class="panel-head"><h3>Files &amp; contract</h3><span class="hint">Saved with the job</span></div>
+          <div id="est-files"></div>
+        </section>` : ''}
       </div>
 
       <aside class="est-summary panel" id="est-summary"></aside>
     </div>`;
 
     renderSummary(host);
+    const fe = u.qs('#est-files', host);
+    if (fe) MT.files.panel(fe, store.deal(e.dealId));
 
     // Field bindings
     u.qsa('[data-k]', host).forEach((inp) => {
@@ -212,6 +233,7 @@
     const s = store.state;
     const e = view.draft;
     const t = calc.estimate(e, s);
+    const dep = calc.deposit(e, s);
     const oh = calc.overhead(s);
     const target = u.num(s.overhead.targetProfit) / 100;
     const mk = t.margin >= target ? 'good' : t.margin >= 0.1 ? 'warn' : 'bad';
@@ -228,6 +250,7 @@
         ${t.disposal ? row('Disposal fees', u.money(t.disposal, true)) : ''}
         ${t.discount ? row('Discount', '−' + u.money(t.discount, true)) : ''}
         ${t.tax ? row('Sales tax', u.money(t.tax, true)) : ''}
+        ${dep.amount ? row('Deposit to book', u.money(dep.amount, true), 'strong') + row('Balance on completion', u.money(dep.balance, true)) : ''}
       </div>
       <div class="sum-internal">
         <h4>Your numbers <small>(not shown to the customer)</small></h4>
@@ -247,6 +270,7 @@
         <button class="btn primary" data-act="save">${view.isNew ? 'Save estimate' : 'Save changes'}</button>
         ${e.status === 'draft' ? '<button class="btn" data-act="send">Mark as sent</button>' : ''}
         ${e.status === 'sent' ? '<button class="btn good" data-act="accept">Customer accepted</button><button class="btn ghost" data-act="decline">Customer declined</button>' : ''}
+        ${dep.amount && (e.status === 'sent' || e.status === 'accepted') ? '<button class="btn ghost" data-act="deposit">Request the deposit</button>' : ''}
         <button class="btn ghost" data-act="print">Print or save PDF</button>
         ${!view.isNew ? '<button class="btn ghost" data-act="dup">Duplicate</button>' : ''}
         <button class="btn ghost" data-act="new">Start a new estimate</button>
@@ -303,6 +327,7 @@
     }
     else if (act === 'decline') { if (commit('declined')) ui.toast('Estimate marked as declined'); }
     else if (act === 'print') { if (validate(e)) printEstimate(e); }
+    else if (act === 'deposit') { if (commit()) depositRequest(e); }
     else if (act === 'dup') {
       view.draft = Object.assign(JSON.parse(JSON.stringify(e)), { id: u.uid('e'), number: '', status: 'draft', sentAt: '', date: u.todayISO(), dealId: '' });
       view.isNew = true;
@@ -328,6 +353,7 @@
     const s = store.state;
     const c = store.customer(e.customerId) || {};
     const t = calc.estimate(e, s);
+    const dep = calc.deposit(e, s);
     const lines = e.items.map((it) => ({ desc: it.desc, qty: it.qty, unit: it.unit, price: u.num(it.price), total: u.num(it.qty) * u.num(it.price) }));
     if (e.billTM) {
       lines.push({ desc: 'Crew time', qty: u.num(e.crewHours), unit: 'crew-hr', price: u.num(e.crewRate), total: t.labor });
@@ -342,10 +368,45 @@
       ],
       lines,
       extraRows: [t.surcharge ? ['Site difficulty adjustment', t.surcharge] : null, t.disposal ? ['Disposal & dump fees', t.disposal] : null].filter(Boolean),
-      totals: [['Subtotal', t.subtotal], t.discount ? ['Discount', -t.discount] : null, t.tax ? ['Sales tax (' + e.taxRate + '%)', t.tax] : null, ['Total', t.total, true]].filter(Boolean),
+      totals: [['Subtotal', t.subtotal], t.discount ? ['Discount', -t.discount] : null, t.tax ? ['Sales tax (' + e.taxRate + '%)', t.tax] : null, ['Total', t.total, true],
+        dep.amount ? ['Deposit to book the job', dep.amount] : null, dep.amount ? ['Balance due on completion', dep.balance] : null].filter(Boolean),
+      pay: s.settings.payLink ? { url: s.settings.payLink, label: dep.amount ? 'Pay your deposit online' : 'Pay online', note: dep.amount ? 'Your job is scheduled once the ' + u.money(dep.amount, true) + ' deposit is received.' : '' } : null,
       notes: e.notes,
       signature: true,
       footer: s.settings.estimateFooter || '',
+    });
+  }
+
+  /** Message asking the customer for the deposit, with the Pay online link; also records the deposit once it's in. */
+  function depositRequest(e) {
+    const s = store.state;
+    const c = store.customer(e.customerId) || {};
+    const co = s.settings.company;
+    const dep = calc.deposit(e, s);
+    const d = store.deal(e.dealId);
+    const paid = d ? u.sum(d.payments || [], (x) => x.amount) : 0;
+    const link = s.settings.payLink;
+    const text = `Hi ${u.firstName(c.name)},\n\nThank you for choosing ${co.name}! To get "${e.title}" on our schedule, we ask for a deposit of ${u.money(dep.amount, true)} (estimate ${e.number}, total ${u.money(dep.total, true)}). The remaining ${u.money(dep.balance, true)} is due when the work is done.\n\n${link ? 'You can pay securely online here:\n' + link + '\n\nOr pay by check, cash, or Zelle.' : 'You can pay by card, check, cash, or Zelle.'}\n\nQuestions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`;
+    const subject = 'Deposit for ' + e.title + ' (' + e.number + ')';
+    ui.modal({
+      title: 'Request the deposit',
+      body: `${!link ? '<p class="hint">Tip: add your Square payment link in Settings → Defaults so customers can pay online from this message.</p>' : ''}
+        ${paid ? `<p class="hint">${u.money(paid, true)} has already been recorded on this job.</p>` : ''}
+        <div class="preview"><div class="prev-subj">${u.esc(subject)}</div><div class="prev-body">${u.esc(text)}</div></div>`,
+      actions: [
+        { label: 'Deposit received', kind: 'ghost', left: true, onClick: () => {
+          if (!d) { ui.toast('Save the estimate first.', 'err'); return false; }
+          d.payments = d.payments || [];
+          d.payments.push({ id: u.uid('pay'), amount: dep.amount, date: u.todayISO(), method: link ? 'Square' : 'Check', invoiceId: '', deposit: true });
+          if (e.status !== 'accepted') { view.draft.status = 'accepted'; commit('accepted'); }
+          store.log('payment', 'Deposit of ' + u.money(dep.amount, true) + ' received from ' + store.customerName(e.customerId) + ' for "' + e.title + '"', { customerId: e.customerId, dealId: d.id });
+          store.save();
+          ui.toast('Deposit recorded on the job. Change the method in the deal if needed.');
+        } },
+        { label: 'Text', kind: 'ghost', keepOpen: true, onClick: () => { window.location.href = 'sms:' + encodeURIComponent(c.phone || '') + '?&body=' + encodeURIComponent(text); } },
+        { label: 'Email', kind: 'ghost', keepOpen: true, onClick: () => { window.location.href = 'mailto:' + encodeURIComponent(c.email || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text); } },
+        { label: 'Copy message', kind: 'primary', onClick: () => { u.copyText(text).then(() => ui.toast('Message copied')); store.log('message', 'Deposit request for ' + e.number, { customerId: e.customerId, dealId: e.dealId }); store.save(true); } },
+      ],
     });
   }
 

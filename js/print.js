@@ -32,6 +32,7 @@
         ${(opts.extraRows || []).map((x) => `<tr><td>${u.esc(x[0])}</td><td></td><td></td><td>${u.money(x[1], true)}</td></tr>`).join('')}
       </tbody></table>
       <table class="pr-totals">${opts.totals.map((t) => `<tr class="${t[2] ? 'grand' : ''}"><td>${u.esc(t[0])}</td><td>${typeof t[1] === 'number' ? u.money(t[1], true) : u.esc(t[1])}</td></tr>`).join('')}</table>
+      ${opts.pay && opts.pay.url ? `<div class="pr-pay"><b>${u.esc(opts.pay.label || 'Pay online')}</b><a href="${u.esc(opts.pay.url)}">${u.esc(opts.pay.url)}</a>${opts.pay.note ? '<span>' + u.esc(opts.pay.note) + '</span>' : ''}</div>` : ''}
       ${opts.notes ? `<div class="pr-notes"><h4>Notes</h4><p>${u.esc(opts.notes).replace(/\n/g, '<br>')}</p></div>` : ''}
       ${opts.signature ? '<div class="pr-sign"><div>Accepted by ______________________________</div><div>Date ______________</div></div>' : ''}
       <p class="pr-foot">${u.esc(opts.footer || '')}</p>`;

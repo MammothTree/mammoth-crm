@@ -31,10 +31,10 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 | Tab | What it does |
 |---|---|
 | **Sales hub** | A time bar (this month, last month, quarter, year to date, last 12 months, last year, or custom dates) controls the KPIs: revenue paid, outstanding, estimates, and close rate, each compared with the previous period. It also shows profit on jobs won, the sales goal growth rings, upcoming jobs, follow-ups, and recent activity. **Sales goal** sets your annual goal with seasonal monthly targets. |
-| **Leads** | Drag-and-drop deal board: New Lead → Site Visit → Estimate Sent → Negotiating → Won / Lost. The deal window holds crew, start time, job length, payments, job cost, and the invoice. |
+| **Leads** | Drag-and-drop deal board: New Lead → Site Visit → Estimate Sent → Negotiating → Won / Lost. The deal window holds crew, start time, job length, deposit status, payments, job cost, the invoice, and **Files & contract** (attach signed contracts, permits, PDFs, or documents; backed up to the private data repository with the job photos). |
 | **Clients** | Client list with lifetime value. **Import clients** brings in a list pasted from Google Sheets, or a CSV or Excel file. Columns are matched automatically and existing clients are skipped or have missing details filled in. Each client card shows deals, estimates, invoices, notes, and activity. |
-| **Estimates** | Price book items, add-ons (cranes, subs, rentals), crew hours, equipment, and site difficulty. Shows your real cost and margin, and prints with your logo. |
-| **Invoices** | Turn finished jobs into invoices, record partial or full payments, print with a "Paid" stamp, copy a payment reminder, or void an invoice. |
+| **Estimates** | Price book items, add-ons (cranes, subs, rentals), crew hours, equipment, and site difficulty. Shows your real cost and margin, and prints with your logo. Set a deposit to book the job (% or dollars, default in Settings); the printout shows the deposit, the balance due on completion, and your Pay online link. **Request the deposit** writes the text or email and records the deposit when it arrives. Flat-priced jobs leave "Bill crew time" off, so hours only drive your cost. |
+| **Invoices** | Turn finished jobs into invoices, record partial or full payments (deposits already paid are subtracted), print with a "Paid" stamp and a Pay online link, copy a payment reminder with the link, or void an invoice. |
 | **Job cam** | Photo and video folders per job, with status and before, during, or after labels. Backed up to GitHub when a device is connected. |
 | **Job cost** | Estimated cost compared with actual cost (tracked crew time + an overhead share + job expenses). Flags jobs that ran over budget. |
 | **Time tracking** | Clock in and out (one person or a whole crew), weekly timesheet, labor cost, overtime, and importing hours texted from crew phones. |
@@ -109,6 +109,7 @@ js/seed.js             Demo data
 js/charts.js           Charts and growth rings
 js/media.js            Job cam storage and GitHub photo backup
 js/print.js            Printable estimates and invoices
+js/files.js            Files and contracts attached to jobs
 js/brand.js            Branding
 js/lock.js             PIN lock
 js/crewlink.js         Crew day links and texted hours

@@ -60,23 +60,30 @@
     /* ---------- backup to the private GitHub data repository ---------- */
     MAX_BACKUP: 50 * 1024 * 1024, // GitHub warns above 50 MB per file
     /** Media on this device that isn't backed up yet. */
-    pendingBackup() {
-      const out = [];
-      (MT.store.state.jobFolders || []).forEach((f) => (f.media || []).forEach((m) => { if (!m.sample && !m.remote && !m.tooBig) out.push({ f, m }); }));
+    /** Every stored file with its owner: Job cam photos and videos, plus files attached to jobs (deal.files). */
+    allItems() {
+      const s = MT.store.state, out = [];
+      (s.jobFolders || []).forEach((f) => (f.media || []).forEach((m) => out.push({ f, m })));
+      (s.deals || []).forEach((d) => (d.files || []).forEach((m) => out.push({ f: d, m })));
       return out;
+    },
+    pendingBackup() {
+      return media.allItems().filter((x) => !x.m.sample && !x.m.remote && !x.m.tooBig);
     },
     backupStats() {
       let total = 0, done = 0;
-      (MT.store.state.jobFolders || []).forEach((f) => (f.media || []).forEach((m) => { if (m.sample) return; total++; if (m.remote) done++; }));
+      media.allItems().forEach((x) => { if (x.m.sample) return; total++; if (x.m.remote) done++; });
       return { total, done, pending: media.pendingBackup().length };
     },
     async backupOne(f, m) {
       const blob = await media.get(m.id);
       if (!blob) return false; // added on another device that hasn't backed it up yet
       if (blob.size > media.MAX_BACKUP) { m.tooBig = true; return false; }
-      const ext = (m.mime && m.mime.split('/')[1] || 'bin').replace('jpeg', 'jpg').replace('quicktime', 'mov').split(';')[0];
-      const base = 'media/' + f.id + '/' + m.id;
-      const main = await MT.sync.putFile(base + '.' + ext, blob, 'Job cam: ' + (f.name || '') + ' (' + m.name + ')');
+      const isFile = m.kind === 'file';
+      const fromName = isFile && /\.([a-z0-9]{1,6})$/i.exec(m.name || '');
+      const ext = fromName ? fromName[1].toLowerCase() : (m.mime && m.mime.split('/')[1] || 'bin').replace('jpeg', 'jpg').replace('quicktime', 'mov').split(';')[0];
+      const base = (isFile ? 'files/' : 'media/') + f.id + '/' + m.id;
+      const main = await MT.sync.putFile(base + '.' + ext, blob, (isFile ? 'Job file: ' + (f.title || '') : 'Job cam: ' + (f.name || '')) + ' (' + m.name + ')');
       m.remote = { path: main.path, sha: main.sha, at: new Date().toISOString() };
       const thumb = await media.get(m.id + ':t');
       if (thumb) { const t = await MT.sync.putFile(base + '-thumb.jpg', thumb, 'Job cam thumbnail'); m.remote.tpath = t.path; m.remote.tsha = t.sha; }
