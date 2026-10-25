@@ -55,6 +55,7 @@ Edit the files, then in **GitHub Desktop** commit and select **Push origin**. Gi
 
 | Tab | What it does |
 |---|---|
+| **Training** | 18 lessons in the order a job happens (clients → leads → estimates → sending & approval → scheduling → photos → time → invoices → profit, plus owner tools). Each has a narrated walkthrough that plays on the real screens (the device reads it aloud and highlights each part), practice tasks, and a quick quiz; passing marks the lesson Mastered. Progress is kept per person and synced, with a team progress table. **Our videos**: add your own screen recordings (up to 50 MB, backed up to GitHub) or YouTube/Loom/Google Drive links to any lesson. |
 | **Branding** | Business profile, logo, colors (presets, custom, or pulled from your logo), heading style, and yard address. |
 | **Integrations** | GitHub backup & sync, a website request form (free Google Sheets connector), Square online payments (free Apps Script connector) and CSV import, Google reviews (with your API key), and Yelp tracking. |
 | **Phone app** | The web address with a QR code, install steps, crew view, sending a crew member their day, and importing their hours. |
@@ -137,6 +138,7 @@ js/seo.js              SEO settings, connector client, approvals, publishing ada
 js/seo-audit.js        SEO audit rules, rankings, opportunities
 js/seo-ai.js           SEO content templates and the AI hook
 js/seo-connector.js    The Google Apps Script connector (copied in from the Setup tab)
+js/training-lessons.js Training lessons: walkthrough steps, practice tasks, quizzes
 js/views/*.js          One file per tab
 js/app.js              Navigation and startup
 manifest.webmanifest, sw.js, icons/   Installable phone app and offline support

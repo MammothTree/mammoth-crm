@@ -242,6 +242,8 @@
     data.partners = Object.assign({}, bp, data.partners || {});
     if (!Array.isArray(data.partners.list)) data.partners.list = [];
     if (!Array.isArray(data.partners.categories) || !data.partners.categories.length) data.partners.categories = bp.categories;
+    // Training was added later: your own videos and each person's lesson progress.
+    data.training = Object.assign({ videos: [], progress: {} }, data.training || {});
     return data;
   }
 

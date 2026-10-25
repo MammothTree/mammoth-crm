@@ -59,12 +59,14 @@
 
     /* ---------- backup to the private GitHub data repository ---------- */
     MAX_BACKUP: 50 * 1024 * 1024, // GitHub warns above 50 MB per file
+    TRAINING: { id: 'training', name: 'Training videos' }, // backup folder for the Training tab's own videos
     /** Media on this device that isn't backed up yet. */
     /** Every stored file with its owner: Job cam photos and videos, plus files attached to jobs (deal.files). */
     allItems() {
       const s = MT.store.state, out = [];
       (s.jobFolders || []).forEach((f) => (f.media || []).forEach((m) => out.push({ f, m })));
       (s.deals || []).forEach((d) => (d.files || []).forEach((m) => out.push({ f: d, m })));
+      ((s.training && s.training.videos) || []).forEach((m) => { if (m.kind === 'video') out.push({ f: media.TRAINING, m }); });
       return out;
     },
     pendingBackup() {

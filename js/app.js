@@ -3,7 +3,7 @@
   'use strict';
   const MT = window.MT;
   const u = MT.u, store = MT.store;
-  const ROUTES = ['dashboard', 'pipeline', 'customers', 'estimator', 'invoices', 'jobcam', 'jobcost', 'time', 'calendar', 'routes', 'books', 'overhead', 'templates', 'branding', 'integrations', 'app', 'settings', 'crew', 'seo', 'partners'];
+  const ROUTES = ['dashboard', 'pipeline', 'customers', 'estimator', 'invoices', 'jobcam', 'jobcost', 'time', 'calendar', 'routes', 'books', 'overhead', 'templates', 'branding', 'integrations', 'app', 'settings', 'crew', 'seo', 'partners', 'training'];
   const THEME_KEY = 'mammothcrm.theme';
 
   const app = {
