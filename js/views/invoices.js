@@ -77,6 +77,7 @@
       </section>
       ${ready.length ? `<section class="panel ready-panel"><div class="panel-head"><h3>Finished jobs to invoice</h3><button class="btn primary sm" id="inv-all">Create ${ready.length === 1 ? 'the invoice' : 'all ' + ready.length + ' as drafts'}</button></div>
         <ul class="list compact">${ready.slice(0, 6).map((d) => `<li class="list-row" data-ready="${d.id}"><div class="grow"><div class="row-title">${u.esc(d.title)}</div><div class="row-sub">${u.esc(store.customerName(d.customerId))}, job ${u.fmtDate(d.scheduledDate || d.closedAt)}</div></div><div class="amt">${u.money(d.value)}</div><span class="link">Invoice</span></li>`).join('')}</ul></section>` : ''}
+      ${MT.reviews.panelHTML()}
       <div class="toolbar">
         <input type="search" class="input" id="inv-q" placeholder="Search number, client, or job" value="${u.esc(view.q)}" aria-label="Search invoices">
         <div class="seg" role="tablist">${FILTERS.map((f) => `<button role="tab" data-f="${f[0]}" class="${view.filter === f[0] ? 'on' : ''}" aria-selected="${view.filter === f[0]}">${f[1]}</button>`).join('')}</div>
@@ -96,6 +97,7 @@
     qi.addEventListener('input', u.debounce(() => { view.q = qi.value; renderList(root); const n = u.qs('#inv-q', root); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200));
     u.qsa('[data-f]', root).forEach((b) => b.addEventListener('click', () => { view.filter = b.dataset.f; renderList(root); }));
     u.qsa('tr[data-id]', root).forEach((tr) => tr.addEventListener('click', () => { view.draft = JSON.parse(JSON.stringify(store.invoice(tr.dataset.id))); renderEditor(root); window.scrollTo(0, 0); }));
+    u.qsa('[data-review]', root).forEach((li) => li.addEventListener('click', () => MT.reviews.open(li.dataset.review, () => renderList(root))));
     u.qsa('[data-ready]', root).forEach((li) => li.addEventListener('click', () => { view.draft = newForDeal(li.dataset.ready); renderEditor(root); window.scrollTo(0, 0); }));
     const all2 = u.qs('#inv-all', root);
     if (all2) all2.addEventListener('click', () => {
@@ -229,6 +231,7 @@
           <button class="btn primary" id="iv-save">${saved ? 'Save changes' : 'Save invoice'}</button>
           ${!stored || stored.status === 'draft' ? '<button class="btn" id="iv-send">Mark as sent</button>' : ''}
           <button class="btn" id="iv-preview">Preview &amp; send</button>
+          ${stored && calc.invoiceStatus(stored) === 'paid' && d ? `<button class="btn ${d.reviewAsked && d.reviewAsked.via !== 'skip' ? 'ghost' : 'good'}" id="iv-review">${d.reviewAsked && d.reviewAsked.via !== 'skip' ? 'Review requested ' + u.fmtDate(d.reviewAsked.at.slice(0, 10)) : 'Ask for a Google review'}</button>` : ''}
           <button class="btn ghost" id="iv-print">Print or save PDF</button>
           ${stored && bal > 0 && stored.status !== 'draft' ? '<button class="btn ghost" id="iv-remind">Copy payment reminder</button>' : ''}
           ${stored && stored.status !== 'void' ? '<button class="btn danger-ghost" id="iv-void">Void invoice</button>' : ''}
@@ -278,6 +281,7 @@
       const send = q('#iv-send'); if (send) send.addEventListener('click', () => { if (commit('sent')) ui.toast('Invoice ' + inv.number + ' marked as sent'); });
       q('#iv-print').addEventListener('click', () => printInvoice(inv));
       q('#iv-preview').addEventListener('click', () => { if (commit()) MT.docs.open('invoice', inv.id); });
+      const rv = q('#iv-review'); if (rv) rv.addEventListener('click', () => MT.reviews.open(inv.dealId, () => renderEditor(root)));
       const rem = q('#iv-remind'); if (rem) rem.addEventListener('click', async () => {
         if (MT.pay.ready()) { rem.disabled = true; try { await squareLink(); } catch (e) { /* the reminder still works with the saved link */ } rem.disabled = false; }
         reminder(store.invoice(inv.id));

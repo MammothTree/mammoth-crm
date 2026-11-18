@@ -348,7 +348,7 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
           <li>With Square connected: pay links for the exact deposit or balance, checked every 2 minutes and recorded on the right job and invoice automatically, plus your other Square payments (card reader, tap to pay) for you to match to jobs.</li>
         </ul>
         <ol class="steps">
-          <li>Go to <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com → New project</a> (sign in with the Google account you want emails to come from). Name it "Mammoth Connector". Delete what's there, paste this code, and save. <button class="btn ghost sm" data-copy="paycode">Copy code</button>
+          <li>Go to <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com → New project</a> (signed in as <b>${u.esc(s.settings.company.email || 'your business Google account')}</b>: emails to customers are sent from the account that creates this script). Name it "Mammoth Connector". Delete what's there, paste this code, and save. <button class="btn ghost sm" data-copy="paycode">Copy code</button>
             <pre class="code" id="cp-paycode">${u.esc(MT.payConnector.code(pc.key))}</pre></li>
           <li><b>Square (optional, for online payments):</b> open the <a href="https://developer.squareup.com/apps" target="_blank" rel="noopener">Square Developer dashboard</a> and sign in with your normal Square account. Select <b>+ Create an application</b> and name it "Mammoth CRM". Open it, switch the toggle at the top to <b>Production</b>, and under <b>Credentials</b> copy the <b>Production Access token</b>. In Apps Script, select <b>Project Settings</b> (gear icon) → <b>Script properties</b> → <b>Add script property</b>. Property: <code>SQUARE_TOKEN</code>. Value: the token. Save.</li>
           <li>Back in the Editor, choose <b>authorize</b> in the function menu and select <b>Run</b>. Allow access: it asks to send email as you, contact Square, and create one Google Sheet that logs opens and replies. If Google says the app isn't verified, select Advanced → Go to Mammoth Connector. It's your own script.</li>
@@ -370,9 +370,14 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         </ul>
         <div class="btn-row"><label class="btn primary file-btn">Import a Square CSV<input type="file" accept=".csv,text/csv" id="sq-file" hidden></label><span class="hint">${sq.imported ? sq.imported + ' payments imported so far. ' : ''}Payments you've already imported are skipped automatically.</span></div>`)}
 
-      ${card('google', 'Google reviews', g.placeId ? 'Connected' : g.sample ? 'Sample data' : 'Not set up', g.placeId ? 'good' : g.sample ? 'warn' : '', 'Track your Google rating and review count, and show your latest reviews.', `
+      ${card('google', 'Google reviews', g.placeId ? 'Connected' : MT.reviews.link() ? 'Review link set' : g.sample ? 'Sample data' : 'Not set up', g.placeId || MT.reviews.link() ? 'good' : g.sample ? 'warn' : '', 'Ask happy customers for Google reviews, and track your rating and review count.', `
         ${g.rating ? `<div class="review-stat"><div class="rs-big">${g.rating.toFixed(1)}</div><div>${stars(g.rating)}<div><b>${g.count}</b> Google reviews ${trend(g.history)}</div><div class="row-sub">${u.esc(g.name || '')}${g.fetchedAt ? ', updated ' + u.fmtDate(g.fetchedAt.slice(0, 10)) : ''}</div></div></div>
           <ul class="reviews">${(g.reviews || []).slice(0, 5).map((r) => `<li><div class="rv-top">${stars(r.rating)}<b>${u.esc(r.author)}</b><span class="row-sub">${u.esc(r.when)}</span></div><p>${u.esc(r.text)}</p></li>`).join('')}</ul>` : ''}
+        <h4>Your review link (free, no key needed)</h4>
+        <p>On Google, sign in with the account that manages your Business Profile, search <b>${u.esc(s.settings.company.name || 'Mammoth Tree Service')}</b>, and select <b>Ask for reviews</b> (it's also under Business Profile → Reviews → Get more reviews). Copy the link and paste it here:</p>
+        <div class="input-with-btn"><input class="input" id="g-revlink" value="${u.esc(MT.reviews.link())}" placeholder="https://g.page/r/…/review"><button class="btn primary sm" id="g-revlink-save">Save</button>${MT.reviews.link() ? `<a class="btn ghost sm" href="${u.esc(MT.reviews.link())}" target="_blank" rel="noopener">Test it</a>` : ''}</div>
+        <p class="hint">Paid invoices then offer <b>Ask for a review</b>, and Invoices lists recent paid jobs to ask. With the connector set up, the request is emailed from your Google account; otherwise it opens your email or messages app. The link is also the merge field {{company.reviewLink}} in Templates.</p>
+        <h4 style="margin-top:18px">Track your rating (optional)</h4>
         <ol class="steps">
           <li>In the <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud console</a>, create a project, turn on <b>Maps JavaScript API</b> and <b>Places API (New)</b>, and create an API key. Google requires a billing account. Review lookups like this normally stay within Google's free monthly allowance.</li>
           <li>Paste the key: <div class="input-with-btn"><input class="input" type="password" id="g-key" value="${u.esc(gkey)}" placeholder="AIza…" autocomplete="off"><button class="btn ghost sm" id="g-key-save">Save key</button></div>
@@ -380,7 +385,7 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
           <li>Find your business: <div class="input-with-btn"><input class="input" id="g-q" value="${u.esc(s.settings.company.name + (s.settings.company.address ? ' ' + s.settings.company.address : ''))}"><button class="btn ghost sm" id="g-find">Search Google</button></div><div id="g-results"></div></li>
         </ol>
         <div class="btn-row"><button class="btn primary" id="g-refresh" ${g.placeId ? '' : 'disabled'}>Refresh reviews</button>${g.reviewUrl ? `<button class="btn ghost" data-copytext="${u.esc(g.reviewUrl)}">Copy "leave a review" link</button>` : ''}</div>
-        <p class="hint">Your review link is used by the "Thank you &amp; review request" template, as the merge field {{company.reviewLink}}.</p>`)}
+`)}
 
       ${card('yelp', 'Yelp', y.url ? 'Tracking' : y.sample ? 'Sample data' : 'Not set up', y.url ? 'good' : y.sample ? 'warn' : '', 'Keep an eye on your Yelp rating and review count.', `
         ${y.rating ? `<div class="review-stat"><div class="rs-big">${Number(y.rating).toFixed(1)}</div><div>${stars(y.rating)}<div><b>${y.count}</b> Yelp reviews ${trend(y.history)}</div></div></div>` : ''}
@@ -478,6 +483,15 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
     on('#pc-off', 'click', () => ui.confirm('Disconnect Square?', 'New pay links stop being created and payments are no longer checked. Links already sent still work in Square. Payments already recorded stay.', 'Disconnect', () => { pc.url = ''; pc.lastError = ''; store.save(true); view.render(root); }));
 
     // google
+    on('#g-revlink-save', 'click', () => {
+      const v = u.qs('#g-revlink', root).value.trim();
+      if (v && !/^https:\/\//.test(v)) { ui.toast('Paste the full link, starting with https://', 'err'); return; }
+      if (v && !/(g\.page|google\.[a-z.]+|goo\.gl|maps\.app\.goo\.gl|search\.google)/i.test(v)) ui.toast('Saved. That doesn\'t look like a Google link, so test it before sending.', 'err');
+      else ui.toast(v ? 'Review link saved' : 'Review link removed');
+      s.settings.company.reviewLink = v;
+      store.save(true);
+      view.render(root);
+    });
     on('#g-key-save', 'click', () => { secrets.set('googleKey', u.qs('#g-key', root).value.trim()); ui.toast('Google key saved in this browser'); });
     on('#g-find', 'click', async (e) => {
       const host = u.qs('#g-results', root);

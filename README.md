@@ -130,6 +130,7 @@ js/print.js            Printable estimates and invoices
 js/files.js            Files and contracts attached to jobs
 js/pay.js              Square pay links and automatic payment recording
 js/docs.js             Preview, PDF, email/text sending, and customer activity for estimates and invoices
+js/reviews.js          Google review requests after paid jobs (email via the connector, or text)
 js/pay-connector.js    The Google Apps Script Square connector (copied in from Integrations)
 js/brand.js            Branding
 js/lock.js             PIN lock
