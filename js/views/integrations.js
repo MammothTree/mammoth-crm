@@ -397,7 +397,7 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         </div>
         <div class="btn-row"><button class="btn primary" id="y-save">Save Yelp stats</button>${y.url ? `<a class="btn ghost" href="${u.esc(y.url)}" target="_blank" rel="noopener">Open Yelp page</a>` : ''}</div>`)}
 
-      ${card('github', 'GitHub backup & sync', gh.lastSync ? 'Connected' : 'Not set up on this device', gh.lastSync ? 'good' : 'warn', 'Your CRM data and job photos in your private GitHub repository, the same on every device.', `
+      ${card('github', 'GitHub backup & sync', !gh.token ? 'Not set up on this device' : gh.problem ? 'Paused' : !gh.auto ? 'Auto sync off' : gh.lastSync ? 'Connected' : 'Not set up on this device', gh.token && !gh.problem && gh.auto && gh.lastSync ? 'good' : gh.problem ? 'bad' : 'warn', 'Your CRM data and job photos in your private GitHub repository, the same on every device.', `
         <p>Data goes to your private repository <a href="https://github.com/${u.esc(gh.owner)}/${u.esc(gh.repo)}" target="_blank" rel="noopener"><b>${u.esc(gh.owner)}/${u.esc(gh.repo)}</b></a>. Each computer or phone needs an access key once:</p>
         <ol class="steps">
           <li><a class="btn ghost sm" href="https://github.com/settings/personal-access-tokens/new?name=${encodeURIComponent('Mammoth CRM')}&description=${encodeURIComponent('Sync for the Mammoth CRM app')}&target_name=${encodeURIComponent(gh.owner)}&expires_in=366&contents=write" target="_blank" rel="noopener">Create an access key on GitHub</a> (signed in as ${u.esc(gh.owner)}).</li>
@@ -409,7 +409,7 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         <label class="check" style="margin-top:6px"><input type="checkbox" id="gh-media" ${gh.mediaAuto ? 'checked' : ''}><span>Back up job cam photos and videos (up to 50 MB each) so every device can see them</span></label>
         <p class="hint" id="gh-usage">${gh.token ? 'Checking storage…' : ''}</p>
         <div class="btn-row"><button class="btn ghost" id="gh-pull" ${gh.token ? '' : 'disabled'}>Get latest from GitHub</button><button class="btn ghost" id="gh-push" ${gh.token ? '' : 'disabled'}>Send this device's data</button>${gh.token ? '<button class="btn danger-ghost" id="gh-forget">Disconnect this device</button>' : ''}</div>
-        <p id="sync-status" class="sync-status">${gh.lastSync ? 'Last synced ' + u.esc(new Date(gh.lastSync).toLocaleString()) : ''}</p>
+        <p id="sync-status" class="sync-status ${gh.problem ? 'err' : ''}">${gh.problem ? u.esc(gh.problem.kind === 'conflict' ? 'Paused: this device and GitHub both have changes. Use "Combine both" at the top of the page to keep everything.' : gh.problem.kind === 'key' ? 'Stopped: GitHub didn\'t accept the key. Make a new key (step 1) and select Reconnect.' : 'Problem: ' + gh.problem.msg) + ' ' : ''}${gh.lastSync ? 'Last synced ' + u.esc(new Date(gh.lastSync).toLocaleString()) + (gh.dirty ? ' (this device has changes not sent yet)' : '') : ''}</p>
         <details class="adv"><summary>Advanced</summary><div class="form-grid" id="st-gh" style="margin-top:10px">
           <label class="field"><span>GitHub account</span><input class="input" name="owner" value="${u.esc(gh.owner)}" autocomplete="off"></label>
           <label class="field"><span>Private data repository</span><input class="input" name="repo" value="${u.esc(gh.repo)}" autocomplete="off"></label>
@@ -558,10 +558,11 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
         if (store.state.demo) { await sync.pull(); MT.views.estimator.onDataReplaced(); finish('Connected. Loaded your data from GitHub.'); return; }
         ui.modal({
           title: 'Which data should this device use?', size: 'sm',
-          body: '<p>GitHub already has CRM data, and this device has its own. Choose which copy to keep. The other one is replaced.</p><p class="hint">Not sure? Download a backup of this device first (Settings → Backups).</p>',
+          body: '<p>GitHub already has CRM data, and this device has its own.</p><p><b>Combine both</b> keeps everything from both copies (recommended). Or keep just one copy; the other is replaced.</p><p class="hint">A restore point is saved first (Settings → Undo), and GitHub keeps every past version.</p>',
           actions: [
-            { label: 'Keep GitHub\'s copy', kind: 'primary', onClick: () => { sync.pull().then(() => { MT.views.estimator.onDataReplaced(); finish('Loaded your data from GitHub'); }, (e) => sync.status(e.message, true)); } },
-            { label: 'Keep this device\'s copy', kind: 'ghost', onClick: () => { sync.push(true).then(() => finish('This device\'s data is now on GitHub'), (e) => sync.status(e.message, true)); } },
+            { label: 'Keep only this device', kind: 'ghost', onClick: () => { store.saveRestorePoint('Before replacing GitHub\'s copy'); sync.push(true).then(() => finish('This device\'s data is now on GitHub'), (e) => sync.status(e.message, true)); } },
+            { label: 'Keep only GitHub', kind: 'ghost', onClick: () => { store.saveRestorePoint('Before loading GitHub\'s copy'); sync.pull().then(() => { MT.views.estimator.onDataReplaced(); finish('Loaded your data from GitHub'); }, (e) => sync.status(e.message, true)); } },
+            { label: 'Combine both', kind: 'primary', onClick: () => { sync.combine().then(() => { MT.views.estimator.onDataReplaced(); finish('Combined. This device and GitHub now have everything.'); }, (e) => sync.status(e.message, true)); } },
           ],
         });
       })());
@@ -571,10 +572,10 @@ document.getElementById('mt-lead').addEventListener('submit', function (e) {
       ghRead();
       busy(ev.target, sync.push(false).then(() => { sync.status('Sent to GitHub ' + new Date().toLocaleTimeString()); ui.toast('Sent to GitHub'); }, (e) => {
         if (e.conflict) {
-          ui.modal({ title: 'GitHub has newer data', size: 'sm', body: '<p>' + u.esc(e.message) + '</p>', actions: [
+          ui.modal({ title: 'GitHub has newer data', size: 'sm', body: '<p>Another device saved changes that this device doesn\'t have. <b>Combine both</b> keeps everything from both.</p>', actions: [
             { label: 'Cancel' },
-            { label: 'Get latest instead', kind: 'ghost', onClick: () => doPull() },
-            { label: 'Overwrite GitHub', kind: 'danger', onClick: () => { sync.push(true).then(() => ui.toast('Sent to GitHub'), (er) => sync.status(er.message, true)); } },
+            { label: 'Overwrite GitHub', kind: 'danger-ghost', onClick: () => { sync.push(true).then(() => ui.toast('Sent to GitHub'), (er) => sync.status(er.message, true)); } },
+            { label: 'Combine both', kind: 'primary', onClick: () => { sync.combine().then(() => { MT.views.estimator.onDataReplaced(); ui.toast('Combined and synced'); view.render(root); }, (er) => sync.status(er.message, true)); } },
           ] });
         } else sync.status(e.message, true);
       }));

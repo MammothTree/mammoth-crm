@@ -185,6 +185,72 @@
     };
   }
 
+  /**
+   * Combines two copies of the data (this device's and GitHub's) so nothing either side added is lost.
+   * Every record from both is kept (matched by id). When both have the same record, this device's version wins, but
+   * payments, files, and pay links added to it on either side are all kept. Settings come from this device.
+   * Something deleted on only one side comes back; it can be deleted again.
+   */
+  function mergeStates(local, remote) {
+    const out = JSON.parse(JSON.stringify(local));
+    if (!remote || typeof remote !== 'object') return out;
+    const union = (a, b) => {
+      const A = Array.isArray(a) ? a : [], B = Array.isArray(b) ? b : [];
+      const ids = new Set(A.map((x) => x && x.id).filter(Boolean));
+      return A.concat(B.filter((x) => x && x.id && !ids.has(x.id)));
+    };
+    ['customers', 'deals', 'estimates', 'invoices', 'activities', 'events', 'timeEntries', 'jobFolders', 'templates', 'crew'].forEach((k) => {
+      if (Array.isArray(remote[k])) out[k] = union(out[k], remote[k]);
+    });
+    // Same job on both sides: keep every payment, file, and pay link.
+    const rDeals = new Map((remote.deals || []).map((d) => [d.id, d]));
+    (out.deals || []).forEach((d) => {
+      const r = rDeals.get(d.id);
+      if (!r || r === d) return;
+      ['payments', 'files', 'payLinks', 'expenses'].forEach((k) => { if (Array.isArray(r[k])) d[k] = union(d[k], r[k]); });
+      if (!d.reviewAsked && r.reviewAsked) d.reviewAsked = r.reviewAsked;
+    });
+    const rFolders = new Map((remote.jobFolders || []).map((f) => [f.id, f]));
+    (out.jobFolders || []).forEach((f) => { const r = rFolders.get(f.id); if (r && Array.isArray(r.media)) f.media = union(f.media, r.media); });
+    // Estimates and invoices: keep customer activity seen by either side.
+    const keepTrack = (list, rlist) => {
+      const R = new Map((rlist || []).map((x) => [x.id, x]));
+      (list || []).forEach((x) => {
+        const r = R.get(x.id);
+        if (!r) return;
+        if (!x.share && r.share) x.share = r.share;
+        if ((r.sends || []).length > (x.sends || []).length) x.sends = r.sends;
+        if (r.track && (!x.track || (r.track.views || 0) > (x.track.views || 0) || (r.track.approvedAt && !x.track.approvedAt))) x.track = r.track;
+        if (r.status === 'accepted' && x.status === 'sent') x.status = 'accepted';
+      });
+    };
+    keepTrack(out.estimates, remote.estimates);
+    keepTrack(out.invoices, remote.invoices);
+    if (remote.books) {
+      out.books = out.books || {};
+      ['accounts', 'txns', 'imports'].forEach((k) => { out.books[k] = union(out.books[k], remote.books[k]); });
+      const seen = new Set((out.books.rules || []).map((r) => JSON.stringify(r)));
+      out.books.rules = (out.books.rules || []).concat((remote.books.rules || []).filter((r) => !seen.has(JSON.stringify(r))));
+    }
+    if (remote.partners && out.partners) out.partners.list = union(out.partners.list, remote.partners.list);
+    if (remote.training) {
+      out.training = out.training || { videos: [], progress: {} };
+      out.training.videos = union(out.training.videos, remote.training.videos);
+      const P = out.training.progress = out.training.progress || {};
+      Object.keys(remote.training.progress || {}).forEach((who) => {
+        P[who] = P[who] || {};
+        Object.keys(remote.training.progress[who] || {}).forEach((l) => { P[who][l] = Object.assign({}, remote.training.progress[who][l], P[who][l] || {}); });
+      });
+    }
+    const rsq = remote.integrations && remote.integrations.square, osq = out.integrations && out.integrations.square;
+    if (rsq && osq) osq.seenIds = Array.from(new Set((osq.seenIds || []).concat(rsq.seenIds || [])));
+    out.nextEstimateNo = Math.max(Number(out.nextEstimateNo) || 0, Number(remote.nextEstimateNo) || 0);
+    out.nextInvoiceNo = Math.max(Number(out.nextInvoiceNo) || 0, Number(remote.nextInvoiceNo) || 0);
+    out.demo = !!(local.demo && remote.demo);
+    return out;
+  }
+  store.mergeStates = mergeStates;
+
   function migrate(data) {
     const base = MT.seed();
     ['customers', 'deals', 'estimates', 'activities', 'templates'].forEach((k) => { if (!Array.isArray(data[k])) data[k] = []; });
@@ -649,8 +715,40 @@
       c.sha = j.content.sha;
       c.lastSync = new Date().toISOString();
       c.dirty = false;
+      c.problem = null;
       this.setCfg(c);
+      if (MT.app && MT.app.syncBanner) MT.app.syncBanner();
       return c;
+    },
+    /** Reads the copy on GitHub without changing this device. */
+    async peek() {
+      const c = this.cfg();
+      const r = await fetch(this.url(c) + '?ref=' + encodeURIComponent(c.branch), { headers: this.headers(c, true), cache: 'no-store' });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(await errText(r));
+      return JSON.parse(await r.text());
+    },
+    /** Combines this device's data with GitHub's, so entries added on either device are kept, then saves the result to GitHub. */
+    async combine() {
+      const remote = await sync.peek();
+      // Never mix the made-up sample data into real data: a device still on samples just takes GitHub's copy.
+      if (remote && store.state.demo && !remote.demo) { await sync.pull(); return remote; }
+      if (remote && !(remote.demo && !store.state.demo)) {
+        store.saveRestorePoint('Before combining with GitHub');
+        const merged = mergeStates(store.state, remote);
+        this.suspend = true;
+        store.replace(merged);
+        this.suspend = false;
+      }
+      await sync.push(true);
+      return remote;
+    },
+    /** Something is stopping sync (kept until the next successful sync, and shown at the top of every page). */
+    problem(kind, msg) {
+      const c = this.cfg();
+      c.problem = kind ? { kind, msg, at: new Date().toISOString() } : null;
+      this.setCfg(c);
+      if (MT.app && MT.app.syncBanner) MT.app.syncBanner();
     },
     async pull() {
       const c = this.cfg();
@@ -663,6 +761,7 @@
       c.sha = meta.sha;
       c.lastSync = new Date().toISOString();
       c.dirty = false;
+      c.problem = null;
       this.setCfg(c);
       this.suspend = true;
       store.replace(data);
@@ -681,8 +780,9 @@
       if (!c.auto || !sync.ready() || sync.busy) return;
       sync.busy = true;
       sync.push(false).then(() => sync.status('Synced to GitHub ' + new Date().toLocaleTimeString()), (e) => {
-        if (e.conflict) sync.status('Another device changed the data. Open Integrations → GitHub to pull the newer copy.', true);
-        else sync.status('Sync failed: ' + e.message, true);
+        if (e.conflict) { sync.problem('conflict', 'Another device also changed the data.'); sync.status('Another device also changed the data. Use "Combine both" to keep everything.', true); }
+        else if (e instanceof TypeError) { /* offline: the next sync catches up */ }
+        else { sync.problem(/\((401|403|404)\)/.test(e.message) ? 'key' : 'error', e.message); sync.status('Sync failed: ' + e.message, true); }
       }).finally(() => { sync.busy = false; });
     }, 4000),
     /** On opening the app: take newer data from GitHub, or send this device's unsent changes. */
@@ -690,11 +790,19 @@
       if (!sync.ready()) return 'off';
       const c = sync.cfg();
       let meta;
-      try { meta = await sync.remoteMeta(c); } catch (e) { return 'offline'; }
+      try { meta = await sync.remoteMeta(c); } catch (e) {
+        if (e instanceof TypeError) return 'offline'; // no connection: try again later
+        sync.problem(/\((401|403|404)\)/.test(e.message) ? 'key' : 'error', e.message);
+        return 'error';
+      }
       if (!meta) { if (c.auto) { await sync.push(true); return 'pushed'; } return 'empty'; }
-      if (meta.sha === c.sha) { if (c.dirty && c.auto) { await sync.push(false); return 'pushed'; } return 'same'; }
+      if (meta.sha === c.sha) {
+        if (c.dirty && c.auto) { await sync.push(false); return 'pushed'; }
+        if (c.problem) sync.problem(null);
+        return 'same';
+      }
       if (!c.dirty) { await sync.pull(); MT.ui.toast('Updated with the latest data from GitHub'); return 'pulled'; }
-      sync.status('This device and GitHub both have changes. Open Integrations → GitHub to choose which to keep.', true);
+      if (!c.problem || c.problem.kind !== 'conflict') sync.problem('conflict', 'This device and GitHub both have changes.');
       return 'conflict';
     },
     /* ---------- files (job cam photos and videos) in the data repository ---------- */
@@ -725,9 +833,11 @@
     },
     async repoSizeMB() {
       const c = this.cfg();
-      const r = await fetch('https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo), { headers: this.headers(c), cache: 'no-store' });
-      if (!r.ok) return null;
-      return (await r.json()).size / 1024;
+      try {
+        const r = await fetch('https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo), { headers: this.headers(c), cache: 'no-store' });
+        if (!r.ok) return null;
+        return (await r.json()).size / 1024;
+      } catch (e) { return null; } // offline: just skip the storage line
     },
     status(msg, err) {
       const el = document.getElementById('sync-status');

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const MT = window.MT;
-  const u = MT.u, store = MT.store;
+  const u = MT.u, ui = MT.ui, store = MT.store;
   const ROUTES = ['dashboard', 'pipeline', 'customers', 'estimator', 'invoices', 'jobcam', 'jobcost', 'time', 'calendar', 'routes', 'books', 'overhead', 'templates', 'branding', 'integrations', 'app', 'settings', 'crew', 'seo', 'partners', 'training'];
   const THEME_KEY = 'mammothcrm.theme';
 
@@ -26,6 +26,7 @@
         if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
       });
       document.getElementById('demo-note').hidden = !store.state.demo;
+      app.syncBanner();
       try {
         view.render(root);
       } catch (e) {
@@ -52,6 +53,55 @@
   }
 
   /** True when nothing would be lost by reloading or replacing data: no open window, no field being typed in, not mid-estimate. */
+  /** A bar at the top of every page whenever this device's data isn't reaching GitHub, with the fix one tap away. */
+  const SNOOZE_KEY = 'mammothcrm.syncsnooze';
+  app.syncBanner = function () {
+    const note = document.getElementById('demo-note');
+    let el = document.getElementById('sync-banner');
+    if (!el && note) { el = document.createElement('div'); el.id = 'sync-banner'; el.setAttribute('role', 'status'); note.parentNode.insertBefore(el, note); }
+    if (!el) return;
+    const sync = MT.sync, c = sync.cfg();
+    let snoozed = false;
+    try { snoozed = Number(localStorage.getItem(SNOOZE_KEY) || 0) > Date.now(); } catch (e) { /* ignore */ }
+    let msg = '', act = '', kind = 'warn';
+    if (sync.ready()) {
+      const p = c.problem;
+      if (p && p.kind === 'conflict') { msg = 'Sync is paused: this device and GitHub both have changes that the other doesn\'t.'; act = 'combine'; }
+      else if (p && p.kind === 'key') { msg = 'Sync stopped: GitHub didn\'t accept this device\'s access key. It may have expired or been deleted.'; act = 'key'; kind = 'bad'; }
+      else if (p) { msg = 'Sync problem: ' + p.msg; act = 'retry'; }
+      else if (c.dirty && c.lastSync && Date.now() - Date.parse(c.lastSync) > 15 * 60000 && navigator.onLine !== false) { msg = 'Some changes on this device haven\'t reached GitHub yet.'; act = 'retry'; }
+      else if (!c.auto) { msg = 'Automatic sync is off on this device, so your other devices won\'t see changes made here.'; act = 'auto'; }
+    } else if (!store.state.demo && !snoozed) { msg = 'This device isn\'t connected to GitHub sync, so changes made here stay on this device only.'; act = 'connect'; kind = 'info'; }
+    el.className = 'sync-banner ' + kind;
+    el.hidden = !msg;
+    if (!msg) { el.innerHTML = ''; return; }
+    const btns = {
+      combine: '<button class="btn primary sm" data-sb="combine">Combine both (keeps everything)</button><button class="btn ghost sm" data-sb="open">Other choices</button>',
+      key: '<button class="btn primary sm" data-sb="open">Fix the key</button>',
+      retry: '<button class="btn primary sm" data-sb="retry">Sync now</button><button class="btn ghost sm" data-sb="open">Details</button>',
+      auto: '<button class="btn primary sm" data-sb="auto">Turn on sync</button>',
+      connect: '<button class="btn primary sm" data-sb="open">Connect</button><button class="btn ghost sm" data-sb="snooze">Not now</button>',
+    }[act];
+    el.innerHTML = `<span class="sb-msg">${u.esc(msg)}</span><span class="sb-btns">${btns}</span>`;
+    u.qsa('[data-sb]', el).forEach((b) => b.addEventListener('click', () => syncAction(b.dataset.sb, b)));
+  };
+  function syncAction(a, b) {
+    const sync = MT.sync;
+    const done = (msg) => { if (MT.views.estimator.onDataReplaced) MT.views.estimator.onDataReplaced(); app.render(); if (msg) ui.toast(msg); };
+    const fail = (e) => { ui.toast(e.message || String(e), 'err'); app.syncBanner(); };
+    if (a === 'open') { MT.views.integrations.open = 'github'; app.go('integrations'); return; }
+    if (a === 'snooze') { try { localStorage.setItem(SNOOZE_KEY, String(Date.now() + 3 * 86400000)); } catch (e) { /* ignore */ } app.syncBanner(); return; }
+    if (a === 'auto') { const c = sync.cfg(); c.auto = true; sync.setCfg(c); b.disabled = true; sync.autoSync().then(() => done('Sync is on'), fail); return; }
+    if (a === 'retry') { b.disabled = true; b.textContent = 'Syncing…'; sync.autoSync().then((r) => { if (r === 'conflict') app.syncBanner(); else done(r === 'offline' ? 'No connection right now. It will retry.' : 'Synced'); }, fail); return; }
+    if (a === 'combine') {
+      ui.modal({
+        title: 'Combine this device with GitHub?', size: 'sm',
+        body: '<p>Everything from both copies is kept: clients, leads, estimates, invoices, payments, photos, and notes added on either device. Where the same record was changed on both, this device\'s version is used.</p><p class="hint">A restore point is saved first (Settings → Undo), and GitHub keeps every past version. Something you deleted on only one device comes back; just delete it again.</p>',
+        actions: [{ label: 'Cancel' }, { label: 'Combine both', kind: 'primary', onClick: () => { sync.combine().then(() => done('Combined. Both devices now have everything.'), fail); } }],
+      });
+    }
+  }
+
   function idle() {
     const a = document.activeElement;
     return !document.querySelector('.modal-backdrop') && !(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) && app.route !== 'estimator';
