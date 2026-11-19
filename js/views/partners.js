@@ -291,6 +291,9 @@
     });
   }
   function touch(item) { item.lastContact = u.todayISO(); if (item.status === 'new') item.status = 'contacted'; store.save(true); }
+  function emailPartner(item, subject, body, root) {
+    MT.mail.compose({ title: 'Email ' + item.label, to: item.email, subject, body, onSent: (to) => { item.email = to; touch(item); view.render(root); } });
+  }
   function action(act, item, root) {
     const d = details[item.placeId] || {};
     const phone = item.phone || d.phone || '';
@@ -304,10 +307,10 @@
       const body = merge(P().email, item), subject = merge(P().emailSubject, item);
       if (!item.email) {
         ui.modal({ title: 'Email ' + item.label, body: `<p class="hint">Google doesn't list email addresses. ${d.website ? 'Check <a href="' + u.esc(d.website) + '" target="_blank" rel="noopener">their website</a> for one, or c' : 'C'}all and ask who handles subcontractors.</p>
-          <label class="field"><span>Email address</span><input class="input" type="email" id="em-addr" placeholder="name@company.com"></label>`, actions: [{ label: 'Copy message instead', onClick: () => { u.copyText(subject + '\n\n' + body).then(() => ui.toast('Message copied')); } }, { label: 'Save and email', kind: 'primary', onClick: (b) => { const v = u.qs('#em-addr', b).value.trim(); if (!/.+@.+\..+/.test(v)) { ui.toast('Enter a valid email.', 'err'); return false; } item.email = v; touch(item); location.href = 'mailto:' + v + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body); view.render(root); } }] });
+          <label class="field"><span>Email address</span><input class="input" type="email" id="em-addr" placeholder="name@company.com"></label>`, actions: [{ label: 'Copy message instead', onClick: () => { u.copyText(subject + '\n\n' + body).then(() => ui.toast('Message copied')); } }, { label: 'Save and email', kind: 'primary', onClick: (b) => { const v = u.qs('#em-addr', b).value.trim(); if (!/.+@.+\..+/.test(v)) { ui.toast('Enter a valid email.', 'err'); return false; } item.email = v; store.save(true); setTimeout(() => emailPartner(item, subject, body, root), 0); } }] });
         return;
       }
-      touch(item); location.href = 'mailto:' + item.email + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body); view.render(root);
+      emailPartner(item, subject, body, root);
     } else if (act === 'client') {
       if (item.customerId && store.customer(item.customerId)) { MT.app.go('customers'); return; }
       addAsClient(item); view.render(root);

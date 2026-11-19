@@ -104,7 +104,7 @@
           <div class="grow">
             ${c.company ? '<div><b>' + u.esc(c.company) + '</b></div>' : ''}
             <div>${u.esc(c.address)}${c.city ? ', ' + u.esc(c.city) : ''}</div>
-            <div class="contact-line">${c.phone ? '<a href="tel:' + u.esc(c.phone.replace(/[^\d+]/g, '')) + '">' + u.esc(c.phone) + '</a>' : ''}${c.email ? '<a href="mailto:' + u.esc(c.email) + '">' + u.esc(c.email) + '</a>' : ''}</div>
+            <div class="contact-line">${c.phone ? '<a href="tel:' + u.esc(c.phone.replace(/[^\d+]/g, '')) + '">' + u.esc(c.phone) + '</a>' : ''}${c.email ? '<a href="#" data-email>' + u.esc(c.email) + '</a>' : ''}</div>
           </div>
           <div class="cust-ltv"><div class="stat-label">Lifetime value</div><div class="stat-value sm">${u.money(calc.lifetimeValue(s, id))}</div></div>
         </div>
@@ -126,6 +126,8 @@
         <div class="add-note"><input class="input" id="cu-note" placeholder="Log a call, visit, or note"><button class="btn ghost sm" id="cu-note-add">Log it</button></div>
         <ul class="feed">${acts.map((a) => `<li class="feed-${u.esc(a.type)}"><span class="feed-dot" aria-hidden="true"></span><div><div>${u.esc(a.text)}</div><time>${u.fmtDate(a.ts.slice(0, 10))}</time></div></li>`).join('')}</ul>`,
       onMount(b, close) {
+        const em = u.qs('[data-email]', b);
+        if (em) em.addEventListener('click', (e) => { e.preventDefault(); MT.mail.compose({ title: 'Email ' + c.name, to: c.email, subject: '', body: 'Hi ' + (u.firstName(c.name) || 'there') + ',\n\n\n\nThank you,\n' + s.settings.company.owner + '\n' + s.settings.company.name, log: 'Email', meta: { customerId: id } }); });
         u.qsa('[data-deal]', b).forEach((n) => n.addEventListener('click', () => { close(); MT.views.pipeline.openDeal(n.dataset.deal); }));
         u.qsa('[data-est]', b).forEach((n) => n.addEventListener('click', () => { close(); MT.app.go('estimator', { id: n.dataset.est }); }));
         u.qsa('[data-inv]', b).forEach((n) => n.addEventListener('click', () => { close(); MT.app.go('invoices', { id: n.dataset.inv }); }));

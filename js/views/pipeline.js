@@ -4,6 +4,7 @@
   const MT = window.MT;
   const u = MT.u, ui = MT.ui, store = MT.store, calc = MT.calc;
   const PAY_METHODS = ['Check', 'Card', 'Cash', 'Zelle', 'ACH', 'Venmo', 'Financing', 'Other'];
+  const PERMIT = [{ value: '', label: 'No permit needed' }, { value: 'needed', label: 'Needed, not applied yet' }, { value: 'applied', label: 'Applied, waiting' }, { value: 'approved', label: 'Approved' }, { value: 'denied', label: 'Denied' }];
   const SEASON = [0.45, 0.5, 0.9, 1.25, 1.35, 1.2, 1.05, 1.0, 1.1, 1.2, 0.85, 0.55];
 
   const view = { mode: 'board', q: '', source: '', closedDays: 30 };
@@ -16,10 +17,12 @@
     if (d.stage === 'won') meta = d.scheduledDate ? 'Job ' + u.fmtShort(d.scheduledDate) : 'Won ' + u.fmtShort(d.closedAt);
     else if (d.stage === 'lost') meta = d.lostReason || 'Lost ' + u.fmtShort(d.closedAt);
     else meta = d.expectedClose ? (overdue ? 'Overdue, was due ' : 'Close by ') + u.fmtShort(d.expectedClose) : 'No close date';
+    const pst = d.permit && d.permit.status;
+    const ptag = pst === 'needed' || pst === 'applied' ? '<span class="tag owed">Permit ' + (pst === 'applied' ? 'pending' : 'needed') + '</span>' : pst === 'approved' && d.stage !== 'lost' ? '<span class="tag paid">Permit OK</span>' : pst === 'denied' ? '<span class="tag owed">Permit denied</span>' : '';
     return `<article class="deal-card ${overdue ? 'overdue' : ''}" draggable="true" data-id="${d.id}" tabindex="0" aria-label="${u.esc(d.title)}">
       <div class="deal-top"><span class="deal-title">${u.esc(d.title)}</span><span class="deal-val">${u.moneyShort(d.value)}</span></div>
       <div class="deal-cust">${u.esc(store.customerName(d.customerId))}</div>
-      <div class="deal-meta"><span>${u.esc(meta)}</span>${d.stage === 'won' ? (calc.balance(d) > 0 ? '<span class="tag owed">' + u.moneyShort(calc.balance(d)) + ' due</span>' : '<span class="tag paid">Paid</span>') : est ? '<span class="tag">' + u.esc(est.number) + '</span>' : ''}</div>
+      <div class="deal-meta"><span>${u.esc(meta)}</span>${d.stage === 'won' ? (calc.balance(d) > 0 ? '<span class="tag owed">' + u.moneyShort(calc.balance(d)) + ' due</span>' : '<span class="tag paid">Paid</span>') : est ? '<span class="tag">' + u.esc(est.number) + '</span>' : ''}${ptag}</div>
     </article>`;
   }
 
@@ -104,6 +107,7 @@
     const dep = est ? calc.deposit(est, s) : { amount: 0 };
     const oh = calc.overhead(s);
     let pays = (d.payments || []).map((x) => Object.assign({}, x));
+    const pm = d.permit || {};
     ui.modal({
       title: existing ? 'Edit deal' : 'New deal',
       body: `<div class="form-grid">
@@ -122,6 +126,17 @@
         <label class="field lost-only"><span>Lost reason</span><input class="input" name="lostReason" value="${u.esc(d.lostReason)}"></label>
         <label class="field span-2"><span>Notes</span><textarea class="input" rows="3" name="notes">${u.esc(d.notes)}</textarea></label>
       </div>
+      <section class="permit-box">
+        <h4>Permit</h4>
+        <div class="form-grid">
+          <label class="field"><span>Permit status</span><select class="input" data-pm="status">${u.options(PERMIT, pm.status || '')}</select></label>
+          <label class="field pm-more"><span>Village or town</span><input class="input" data-pm="town" value="${u.esc(pm.town || '')}" placeholder="e.g. Libertyville"></label>
+          <label class="field pm-more"><span>Permit number</span><input class="input" data-pm="number" value="${u.esc(pm.number || '')}"></label>
+          <label class="field pm-more"><span>Applied on</span><input class="input" type="date" data-pm="appliedOn" value="${u.esc(pm.appliedOn || '')}"></label>
+          <label class="field pm-ok"><span>Approved on</span><input class="input" type="date" data-pm="approvedOn" value="${u.esc(pm.approvedOn || '')}"></label>
+        </div>
+        <p class="hint" id="dm-pm-hint"></p>
+      </section>
       ${est ? `<p class="hint">Linked estimate: <a href="#" data-open-est="${est.id}">${u.esc(est.number)}</a>, ${u.money(calc.estimate(est, s).total)}, ${u.esc(est.status)}</p>` : ''}
       <section class="money-box won-only">
         <h4>Job cost &amp; profit</h4>
@@ -153,6 +168,21 @@
           u.qs('[name=probability]', b).placeholder = 'Stage default: ' + Math.round(store.stage(stageSel.value).prob * 100);
         };
         stageSel.addEventListener('change', sync); sync();
+        // Permit: approving it drafts the invoice (Settings → Defaults)
+        const pmSel = u.qs('[data-pm=status]', b);
+        const pmSync = () => {
+          const v = pmSel.value;
+          u.qsa('.pm-more', b).forEach((x) => { x.hidden = !v; });
+          u.qs('.pm-ok', b).hidden = v !== 'approved';
+          const inv = existing && store.invoicesFor(existing.id).find((x) => x.status !== 'void');
+          const auto = s.settings.autoInvoicePermit !== false;
+          u.qs('#dm-pm-hint', b).textContent = !v ? 'Set a status if this job needs a village permit. You can attach the permit itself under Files.'
+            : inv ? 'Invoice ' + inv.number + ' already exists for this job.'
+            : auto ? (v === 'approved' ? 'Save to draft the invoice now. It waits in Invoices → Ready to send until you send it.' : 'When you set this to Approved and save, the invoice is drafted for you. You send it when you\'re ready.')
+            : 'Automatic invoices are off (Settings → Defaults).';
+        };
+        pmSel.addEventListener('change', () => { if (pmSel.value === 'approved' && !u.qs('[data-pm=approvedOn]', b).value) u.qs('[data-pm=approvedOn]', b).value = u.todayISO(); pmSync(); });
+        pmSync();
         // Payments and profit
         const valueIn = u.qs('[name=value]', b), costIn = u.qs('[name=jobCost]', b);
         const renderMoney = () => {
@@ -218,6 +248,12 @@
       const before = (target.payments || []).map((x) => x.id);
       Object.assign(target, f, { stage: target.stage, value: u.num(f.value), probability: f.probability === '' ? '' : u.num(f.probability), payments: pays, days: Math.max(1, u.num(f.days) || 1), crewIds: u.qsa('#dm-crew input:checked', b).map((x) => x.value), expenses: target.expenses || [] });
       if (String(f.jobCost) !== String(prevCost)) target.costSource = f.jobCost === '' ? '' : 'actual';
+      const wasApproved = (target.permit || {}).status === 'approved';
+      const permit = {};
+      u.qsa('[data-pm]', b).forEach((x) => { permit[x.dataset.pm] = x.value.trim(); });
+      if (permit.status === 'approved' && !permit.approvedOn) permit.approvedOn = u.todayISO();
+      if (permit.status || target.permit) target.permit = permit;
+      const permitApproved = permit.status === 'approved' && !wasApproved;
       const added = pays.filter((x) => !before.includes(x.id));
       if (added.length) store.log('payment', 'Received ' + u.money(u.sum(added, (x) => x.amount)) + ' from ' + store.customerName(f.customerId) + ' for "' + f.title + '"', { customerId: f.customerId, dealId: target.id });
       if (!existing) {
@@ -228,8 +264,10 @@
       } else if (newStage !== existing.stage) {
         store.setStage(target, newStage);
       }
+      if (permitApproved) store.log('note', 'Permit approved' + (permit.town ? ' by ' + permit.town : '') + (permit.number ? ' (#' + permit.number + ')' : '') + ' for "' + target.title + '"', { customerId: target.customerId, dealId: target.id });
       store.save();
       ui.toast(existing ? 'Deal saved' : 'Deal added');
+      if (permitApproved && s.settings.autoInvoicePermit !== false) MT.views.invoices.autoDraft(target.id, 'permit was approved');
       return true;
     }
   };

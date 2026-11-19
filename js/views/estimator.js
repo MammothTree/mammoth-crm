@@ -314,6 +314,7 @@
     store.upsert('estimates', JSON.parse(JSON.stringify(e)));
     view.isNew = false;
     store.save();
+    if (statusChange === 'accepted' && s.settings.autoInvoiceEstimate) MT.views.invoices.autoDraft(d.id, 'estimate was approved');
     return true;
   }
 
@@ -443,7 +444,10 @@
           ui.toast('Deposit recorded on the job. Change the method in the deal if needed.');
         } },
         { label: 'Text', kind: 'ghost', keepOpen: true, onClick: async () => { try { await ensure(); } catch (err) { return; } window.location.href = 'sms:' + encodeURIComponent(c.phone || '') + '?&body=' + encodeURIComponent(message()); } },
-        { label: 'Email', kind: 'ghost', keepOpen: true, onClick: async () => { try { await ensure(); } catch (err) { return; } window.location.href = 'mailto:' + encodeURIComponent(c.email || '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message()); } },
+        { label: 'Email', kind: 'ghost', keepOpen: true, onClick: async () => {
+          try { await ensure(); } catch (err) { return; }
+          MT.mail.compose({ title: 'Email the deposit request', to: c.email || '', subject, body: message(), log: 'Deposit request for ' + e.number, meta: { customerId: e.customerId, dealId: e.dealId }, onSent: (to) => { if (!c.email) { c.email = to; store.save(true); } } });
+        } },
         { label: 'Copy message', kind: 'primary', keepOpen: true, onClick: async (b) => {
           try { await ensure(); } catch (err) { return; }
           u.copyText(message()).then(() => ui.toast('Message copied'));

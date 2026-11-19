@@ -25,6 +25,10 @@
             <label class="field"><span>Next invoice number</span><input class="input" type="number" min="1" name="nextInvoiceNo" value="${u.esc(s.nextInvoiceNo)}"></label>
             <label class="field"><span>Deposit to book a job (% of the estimate)</span><input class="input" type="number" min="0" max="100" step="1" name="depositPct" value="${u.esc(st.depositPct || 0)}"><small>Starting deposit on new estimates. 0 = no deposit. You can change it on each estimate.</small></label>
             <label class="field span-2"><span>Online payment link</span><input class="input" type="url" name="payLink" value="${u.esc(st.payLink || '')}" placeholder="https://square.link/u/…"><small>A Square payment link (or any pay-online page). It's printed on estimates and invoices as "Pay online", and added to deposit requests and payment reminders. Each invoice can use its own link instead.</small></label>
+            <div class="field span-2"><span>Draft the invoice automatically</span>
+              <label class="check"><input type="checkbox" name="autoInvoicePermit" ${st.autoInvoicePermit !== false ? 'checked' : ''}><span>When a job's permit is approved</span></label>
+              <label class="check"><input type="checkbox" name="autoInvoiceEstimate" ${st.autoInvoiceEstimate ? 'checked' : ''}><span>When the customer approves the estimate</span></label>
+              <small>The invoice is made from the job's estimate and waits in Invoices → Ready to send. Nothing goes to the customer until you select Preview &amp; send.</small></div>
             <label class="field span-2"><span>Notes printed on invoices</span><textarea class="input" rows="2" name="invoiceNotes">${u.esc(st.invoiceNotes)}</textarea></label>
             <label class="field span-2"><span>Footer on estimates and invoices</span><textarea class="input" rows="2" name="estimateFooter">${u.esc(st.estimateFooter)}</textarea></label>
             <label class="field"><span>Fuel price ($ per gallon)</span><input class="input" type="number" min="0" step="0.01" name="fuelPrice" value="${u.esc(st.fuelPrice)}"></label>
@@ -87,6 +91,7 @@
     // Defaults autosave
     u.qsa('#st-def [name]', root).forEach((inp) => inp.addEventListener('input', () => {
       if (inp.name === 'nextInvoiceNo') { const n = Math.max(1, Math.round(u.num(inp.value))); s.nextInvoiceNo = n; }
+      else if (inp.type === 'checkbox') st[inp.name] = inp.checked;
       else st[inp.name] = inp.type === 'number' ? u.num(inp.value) : inp.type === 'url' ? inp.value.trim() : inp.value;
       saveSoon();
     }));

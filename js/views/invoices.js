@@ -37,6 +37,25 @@
     return { id: u.uid('inv'), number: '', dealId: d.id, customerId: d.customerId, date: u.todayISO(), dueDate: u.addDays(u.todayISO(), terms), status: 'draft', sentAt: '', items: lines, discount, taxRate: s.settings.taxRate || 0, notes: s.settings.invoiceNotes || '', isNew: true };
   }
 
+  /** Drafts the job's invoice on its own (permit approved, estimate approved). It waits in Ready to send; nothing goes
+      to the customer. Returns the new invoice, or null when the job already has one or has no price yet. */
+  view.autoDraft = function (dealId, why) {
+    const s = store.state;
+    const d = store.deal(dealId);
+    if (!d || store.invoicesFor(d.id).some((x) => x.status !== 'void')) return null;
+    if (!(u.num(d.value) > 0) && !d.estimateId) return null;
+    const inv = newForDeal(d.id);
+    delete inv.isNew;
+    inv.number = 'INV-' + s.nextInvoiceNo++;
+    inv.auto = why;
+    s.invoices.push(inv);
+    assignDeposits(inv);
+    store.log('invoice', 'Invoice ' + inv.number + ' drafted automatically (' + why + ') for ' + store.customerName(d.customerId) + ', ' + u.money(calc.invoiceTotals(inv).total) + '. Ready to send.', { customerId: d.customerId, dealId: d.id });
+    store.save();
+    ui.toast('Invoice ' + inv.number + ' is drafted and waiting in Invoices → Ready to send');
+    return inv;
+  };
+
   view.render = function (root) {
     const p = MT.app.params;
     if (p.id) { const inv = store.invoice(p.id); if (inv) view.draft = JSON.parse(JSON.stringify(inv)); MT.app.params = {}; }
@@ -57,6 +76,7 @@
     let collected = 0;
     s.invoices.forEach((x) => calc.invoicePayments(x).forEach((pmt) => { if (pmt.date >= since && pmt.date <= today) collected += u.num(pmt.amount); }));
     const ready = s.deals.filter((d) => d.stage === 'won' && (d.scheduledDate || d.closedAt) && (d.scheduledDate || d.closedAt) <= today && !store.invoicesFor(d.id).length);
+    const drafts = s.invoices.filter((x) => x.status === 'draft').sort((a, b) => (a.number < b.number ? 1 : -1));
     const rows = all.filter((x) => {
       const st = calc.invoiceStatus(x);
       if (view.filter === 'unpaid' && !['sent', 'partial', 'overdue'].includes(st)) return false;
@@ -77,6 +97,8 @@
       </section>
       ${ready.length ? `<section class="panel ready-panel"><div class="panel-head"><h3>Finished jobs to invoice</h3><button class="btn primary sm" id="inv-all">Create ${ready.length === 1 ? 'the invoice' : 'all ' + ready.length + ' as drafts'}</button></div>
         <ul class="list compact">${ready.slice(0, 6).map((d) => `<li class="list-row" data-ready="${d.id}"><div class="grow"><div class="row-title">${u.esc(d.title)}</div><div class="row-sub">${u.esc(store.customerName(d.customerId))}, job ${u.fmtDate(d.scheduledDate || d.closedAt)}</div></div><div class="amt">${u.money(d.value)}</div><span class="link">Invoice</span></li>`).join('')}</ul></section>` : ''}
+      ${drafts.length ? `<section class="panel ready-panel" id="inv-drafts"><div class="panel-head"><h3>Ready to send</h3><span class="hint">Drafts the customer hasn't seen yet</span></div>
+        <ul class="list compact">${drafts.slice(0, 8).map((x) => { const d = store.deal(x.dealId); const pm = d && d.permit && d.permit.status === 'approved'; return `<li class="list-row" data-draft="${x.id}"><div class="grow"><div class="row-title">${u.esc(x.number)}: ${u.esc(store.customerName(x.customerId))}</div><div class="row-sub">${u.esc(d ? d.title : '')}${x.auto ? ' · drafted automatically when the ' + u.esc(x.auto) : ''}${pm && x.auto !== 'permit was approved' ? ' · permit approved' : ''}</div></div><div class="amt">${u.money(calc.invoiceTotals(x).total)}</div><button class="btn primary sm" data-sendnow="${x.id}">Preview &amp; send</button></li>`; }).join('')}</ul></section>` : ''}
       ${MT.reviews.panelHTML()}
       <div class="toolbar">
         <input type="search" class="input" id="inv-q" placeholder="Search number, client, or job" value="${u.esc(view.q)}" aria-label="Search invoices">
@@ -97,6 +119,10 @@
     qi.addEventListener('input', u.debounce(() => { view.q = qi.value; renderList(root); const n = u.qs('#inv-q', root); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200));
     u.qsa('[data-f]', root).forEach((b) => b.addEventListener('click', () => { view.filter = b.dataset.f; renderList(root); }));
     u.qsa('tr[data-id]', root).forEach((tr) => tr.addEventListener('click', () => { view.draft = JSON.parse(JSON.stringify(store.invoice(tr.dataset.id))); renderEditor(root); window.scrollTo(0, 0); }));
+    u.qsa('[data-draft]', root).forEach((li) => li.addEventListener('click', (e) => {
+      if (e.target.closest('[data-sendnow]')) { MT.docs.open('invoice', li.dataset.draft); return; }
+      view.draft = JSON.parse(JSON.stringify(store.invoice(li.dataset.draft))); renderEditor(root); window.scrollTo(0, 0);
+    }));
     u.qsa('[data-review]', root).forEach((li) => li.addEventListener('click', () => MT.reviews.open(li.dataset.review, () => renderList(root))));
     u.qsa('[data-ready]', root).forEach((li) => li.addEventListener('click', () => { view.draft = newForDeal(li.dataset.ready); renderEditor(root); window.scrollTo(0, 0); }));
     const all2 = u.qs('#inv-all', root);
@@ -402,7 +428,7 @@
       body: `<div class="preview"><div class="prev-subj">Invoice ${u.esc(inv.number)} reminder</div><div class="prev-body">${u.esc(text)}</div></div>`,
       actions: [
         { label: 'Close' },
-        { label: 'Open in email', kind: 'ghost', keepOpen: true, onClick: () => { window.location.href = 'mailto:' + encodeURIComponent(c.email || '') + '?subject=' + encodeURIComponent('Invoice ' + inv.number + ' reminder') + '&body=' + encodeURIComponent(text); } },
+        { label: 'Email', kind: 'ghost', onClick: () => { MT.mail.compose({ title: 'Email the reminder', to: c.email || '', subject: 'Invoice ' + inv.number + ' reminder', body: text, url: link, button: link ? 'Pay online' : '', log: 'Payment reminder for ' + inv.number, meta: { customerId: inv.customerId, dealId: inv.dealId } }); } },
         { label: 'Copy message', kind: 'primary', onClick: () => { u.copyText(text).then(() => ui.toast('Reminder copied')); store.log('message', 'Payment reminder for ' + inv.number, { customerId: inv.customerId, dealId: inv.dealId }); store.save(true); } },
       ],
     });

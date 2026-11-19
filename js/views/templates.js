@@ -82,7 +82,7 @@
           <div class="preview" id="tp-prev"></div>
           <div class="btn-row">
             <button class="btn primary" id="tp-copy">Copy message</button>
-            <a class="btn ghost" id="tp-mail" href="#">Open in email</a>
+            <button class="btn ghost" id="tp-mail">Email with Gmail</button>
             <a class="btn ghost" id="tp-sms" href="#">Open in texts</a>
           </div>
         </section>` : `<section class="panel tpl-edit">${ui.empty('Create a template to reuse emails, texts, and contract language.')}</section>`}
@@ -106,12 +106,15 @@
       const cat = u.qs('#tp-catsel', root).value;
       u.qs('#tp-prev', root).innerHTML = (cat === 'Email' ? '<div class="prev-subj">' + u.esc(subject) + '</div>' : '') +
         '<div class="prev-body">' + u.esc(text).replace(/\[([\w.]+)\]/g, '<mark title="No data for this field">[$1]</mark>') + '</div>';
-      u.qs('#tp-mail', root).href = 'mailto:' + encodeURIComponent(c && c.email ? c.email : '') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
       u.qs('#tp-sms', root).href = 'sms:' + (c && c.phone ? c.phone.replace(/[^\d+]/g, '') : '') + '?&body=' + encodeURIComponent(text);
       u.qs('#tp-subj-wrap', root).classList.toggle('is-hidden', cat !== 'Email');
       return { subject, text };
     };
     prev();
+    u.qs('#tp-mail', root).addEventListener('click', () => {
+      const m = prev(), c = store.customer(view.customerId);
+      MT.mail.compose({ title: 'Email: ' + t.name, to: c && c.email ? c.email : '', subject: m.subject, body: m.text, log: '"' + t.name + '"', meta: { customerId: c ? c.id : '', dealId: view.dealId || '' } });
+    });
     [body, subj].forEach((n) => n.addEventListener('input', prev));
     u.qs('#tp-catsel', root).addEventListener('change', prev);
     u.qs('#tp-cust', root).addEventListener('change', (e) => { view.customerId = e.target.value; view.dealId = ''; view.render(root); });

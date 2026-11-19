@@ -78,9 +78,12 @@ Everything is free and works on the Squarespace Basic plan. Setup steps are on t
 Setup steps are on **Integrations → Square & online estimates**. One free Google Apps Script web app ("Mammoth Connector", code in `js/pay-connector.js`) does all of this.
 
 - **Preview & send** (estimates and invoices): the preview looks exactly like the PDF.
-  - **Email** is sent from your Google account with the PDF attached and a button to the customer's page. The CRM records "Emailed to … sent".
+  - **Email** is sent through your Gmail (connector v3 uses `GmailApp`, so it's in Gmail's Sent folder) with the PDF attached and a button to the customer's page. The CRM records "Emailed to … sent".
   - **Text** opens your messages app with the link, then asks you to confirm it went out.
-  - Without the connector, Send uses your email or messages app (with the PDF on phones), and Print / save PDF still works.
+  - Without the connector, email opens Gmail with the message filled in (`js/mail.js`; the Gmail app on iPhone, Gmail in the browser elsewhere). On a computer the PDF downloads to attach; on a phone the share menu attaches it. Print / save PDF still works.
+  - PDFs are made with `scrollX/scrollY: 0` and a fixed 820 px window: a page scrolled down used to produce a blank PDF.
+- **All other email** (deposit requests, payment reminders, templates, partner outreach, review requests, the email link on a client card) uses the same Gmail window (`MT.mail.compose`). No button opens Outlook or the default mail app.
+- **Permits → invoice:** each deal has a Permit section (status, village, number, dates; `deal.permit`). Saving it as **Approved** drafts the invoice from the estimate (`MT.views.invoices.autoDraft`, `inv.auto`), with deposits credited. Drafts wait under **Invoices → Ready to send** and are re-dated the day you preview and send them. Settings → Defaults has the switches (permit approved: on; estimate approved: off).
 - **Customer page:** a private link (same link for updated versions). The customer can view the document, approve an estimate by typing their name, ask for changes, send a question about an invoice, or pay through Square. Opens and replies are logged in a Google Sheet the script creates.
   - Every 2 minutes, the CRM shows opens (count and last time) and approvals (estimate accepted, job Won), and flags change requests with the customer's note.
   - You get an email when the customer approves or writes. Your own look via "See customer page" isn't counted as an open.
@@ -88,7 +91,7 @@ Setup steps are on **Integrations → Square & online estimates**. One free Goog
 - **Pay links:** **Request the deposit**, each invoice, and payment reminders create a Square payment link for the exact amount. Links are reused rather than duplicated, and saved on the job (`deal.payLinks`).
 - **Automatic recording:** while the CRM is open, it checks unpaid links every 2 minutes. Each payment is recorded as a Square payment on the job and its invoice. A paid deposit also accepts the estimate and moves the job to Won.
 - **Other Square payments** (card reader, tap to pay): **Bring in other Square payments** opens the same matching screen as the CSV import. Already recorded payments are skipped, so nothing is counted twice.
-- **Updating the connector:** when `js/pay-connector.js` changes, paste the new code and use Deploy → Manage deployments → Edit → New version.
+- **Updating the connector:** when `js/pay-connector.js` changes, paste the new code, run `authorize` again, and use Deploy → Manage deployments → Edit → New version. The CRM rechecks the connector daily; Integrations shows which Gmail it sends from and flags an older version.
 
 ## First steps for real use
 

@@ -10,7 +10,8 @@
 /* Mammoth CRM — connector for Square payments and for estimates & invoices shared with customers.
    - Customer pages: each estimate or invoice you send gets a private web page (this web app + ?d=…) where the customer can
      view it, approve it, ask for changes, or pay. Opens and replies are logged in a Google Sheet it creates for you.
-   - Email: estimates and invoices are emailed from your Google account, with the PDF attached.
+   - Email: estimates, invoices, and any other email from the CRM go out through your Gmail (they show in Sent, and replies
+     come back to your inbox), with the PDF attached.
    - Square (optional): add SQUARE_TOKEN under Project Settings → Script properties (your Square production access token).
      Optional: SQUARE_ENV = sandbox (testing), SQUARE_VERSION = a Square API version date.
    Then Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone. */
@@ -19,7 +20,7 @@ var KEY = '__KEY__';
 /* Run this once from the editor (select "authorize", then Run) to give the script its permissions. */
 function authorize() {
   book_();
-  Logger.log('Emails left today: ' + MailApp.getRemainingDailyQuota());
+  Logger.log('Emails send from ' + Session.getEffectiveUser().getEmail() + ' through Gmail (' + GmailApp.getAliases().length + ' aliases). Emails left today: ' + MailApp.getRemainingDailyQuota());
   var c = cfg_();
   if (c.token) Logger.log(JSON.stringify(status_(c)));
   else Logger.log('No SQUARE_TOKEN yet: sending and customer pages work; Square pay links need the token.');
@@ -97,7 +98,7 @@ function status_(c) {
 }
 
 function statusAll_(c) {
-  var st = { ok: true, version: 2, square: false, env: c.env, locations: [], email: true, quota: MailApp.getRemainingDailyQuota() };
+  var st = { ok: true, version: 3, square: false, env: c.env, locations: [], email: true, gmail: true, from: Session.getEffectiveUser().getEmail(), quota: MailApp.getRemainingDailyQuota() };
   if (c.token) {
     try { var sq = status_(c); st.square = true; st.locations = sq.locations; }
     catch (err) { st.squareError = String(err && err.message || err); }
@@ -279,7 +280,7 @@ function events_(p) {
   return { events: out.slice(-500) };
 }
 
-/* Emails a document from your Google account, with the PDF attached when the CRM sends one. */
+/* Emails from your Gmail (a document with its PDF, or any message from the CRM). */
 function email_(p) {
   var to = String(p.to || '').trim();
   if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(to)) throw new Error('That email address doesn\'t look right: ' + to);
@@ -287,10 +288,10 @@ function email_(p) {
   var html = '<div style="font:15px/1.5 Arial,sans-serif;color:#222;max-width:560px">' + esc_(body).replace(/\n/g, '<br>');
   if (p.url) html += '<p style="margin:22px 0"><a href="' + esc_(p.url) + '" style="background:' + esc_(p.color || '#24563a') + ';color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;display:inline-block">' + esc_(p.button || 'View online') + '</a></p>';
   html += '</div>';
-  var msg = { to: to, subject: String(p.subject || 'Your estimate').slice(0, 250), body: body, htmlBody: html, name: String(p.fromName || '').slice(0, 80) };
-  if (p.replyTo && /@/.test(p.replyTo)) msg.replyTo = String(p.replyTo);
-  if (p.pdf) msg.attachments = [Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), 'application/pdf', String(p.filename || 'document.pdf'))];
-  MailApp.sendEmail(msg);
+  var opt = { htmlBody: html, name: String(p.fromName || '').slice(0, 80) };
+  if (p.replyTo && /@/.test(p.replyTo) && String(p.replyTo).toLowerCase() !== Session.getEffectiveUser().getEmail().toLowerCase()) opt.replyTo = String(p.replyTo);
+  if (p.pdf) opt.attachments = [Utilities.newBlob(Utilities.base64Decode(String(p.pdf)), 'application/pdf', String(p.filename || 'document.pdf'))];
+  GmailApp.sendEmail(to, String(p.subject || 'Your estimate').slice(0, 250), body, opt);
   if (validToken_(p.token)) logEvent_(String(p.token), 'emailed', '', to);
   return { ok: true, to: to, at: new Date().toISOString(), quota: MailApp.getRemainingDailyQuota() };
 }
@@ -310,7 +311,7 @@ function customerAction(token, kind, name, note) {
   if (doc.notify && /@/.test(doc.notify)) {
     var what = kind === 'approve' ? 'approved' : kind === 'changes' ? 'asked for changes to' : 'sent a question about';
     try {
-      MailApp.sendEmail(doc.notify, (doc.customer || 'Your customer') + ' ' + what + ' ' + (doc.type === 'invoice' ? 'invoice ' : 'estimate ') + (doc.number || ''),
+      GmailApp.sendEmail(doc.notify,(doc.customer || 'Your customer') + ' ' + what + ' ' + (doc.type === 'invoice' ? 'invoice ' : 'estimate ') + (doc.number || ''),
         (doc.customer || 'Your customer') + ' ' + what + ' ' + (doc.type || 'estimate') + ' ' + (doc.number || '') + (doc.title ? ' (' + doc.title + ')' : '') + '.\n\n' + (name ? 'Name: ' + name + '\n' : '') + (note ? 'Note:\n' + note + '\n' : '') + '\nIt is also in the CRM.');
     } catch (err) { /* the event is logged either way */ }
   }
@@ -370,7 +371,7 @@ function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).set
 
   window.MT = window.MT || {};
   MT.payConnector = {
-    VERSION: 1,
+    VERSION: 3,
     code(key) {
       const src = connectorCode.toString();
       const a = src.indexOf('// ==== START ====') + '// ==== START ===='.length;

@@ -65,6 +65,10 @@
       // Version 1 connectors only did Square; version 2 also sends documents and may run without a Square token.
       c.square = st.version >= 2 ? !!st.square : true;
       c.docs = st.version >= 2;
+      // Version 3 sends through Gmail and says which address.
+      c.from = st.from || '';
+      c.gmail = !!st.gmail;
+      c.statusAt = new Date().toISOString();
       const active = c.locations.filter((l) => l.status === 'ACTIVE');
       if (!c.locationId || !c.locations.some((l) => l.id === c.locationId)) c.locationId = (active[0] || c.locations[0] || {}).id || '';
       c.lastError = st.squareError ? pay.friendly(st.squareError) : '';
@@ -159,8 +163,15 @@
 
     /** Called on a timer by the app: checks open links every couple of minutes while the CRM is open. */
     autoCheck() {
-      if (!pay.ready() || navigator.onLine === false) return;
+      if (!pay.connected() || navigator.onLine === false) return;
       if (MT.app.idle && !MT.app.idle()) return;
+      // Once a day (and after updating the connector), learn its version and which Gmail it sends from.
+      const c = pay.cfg();
+      if (!(pay.statusTried > Date.now() - 6e5) && (!c.statusAt || Date.now() - Date.parse(c.statusAt) > 864e5)) {
+        pay.statusTried = Date.now();
+        pay.test().catch(() => {});
+      }
+      if (!pay.ready()) return;
       if (pay.lastRun && Date.now() - pay.lastRun < CHECK_EVERY - 5000) return;
       if (!pay.openLinks().length) return;
       pay.lastRun = Date.now();

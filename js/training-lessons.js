@@ -90,7 +90,7 @@
       summary: 'Preview, email, or text an estimate, then watch for opens, change requests, and online approval.',
       steps: [
         { route: 'estimator', before: est('build'), el: '[data-act=preview]', title: 'Preview & send', say: 'When the estimate is ready, select Preview and send. You see exactly what the customer will see, the same as the PDF.' },
-        { title: 'Send by email', say: 'Send by email goes out from our Google account with the PDF attached and a button that says View and approve estimate. When it\'s sent, the CRM shows Emailed to, with the address and the time.' },
+        { title: 'Send by email', say: 'Send with Gmail goes out from our business Gmail with the PDF attached and a button that says View and approve estimate. When it\'s sent, the CRM shows Emailed to, with the address and the time.' },
         { title: 'Send by text', say: 'Send by text opens your messages app with a short note and the link. Tap send there, then tell the CRM it went out.' },
         { title: 'The customer\'s page', say: 'The link opens the customer\'s own page. They can approve by typing their name, ask for changes, like please also quote the second stump, and pay the deposit online.' },
         { el: '#est-summary', title: 'Watch for activity', say: 'On the estimate you\'ll see when they opened it and how many times. If they ask for changes, their note shows here. Update the estimate and send it again: the same link shows the new version. When they approve, the estimate is accepted and the job moves to Won by itself.' },
@@ -168,11 +168,12 @@
       steps: [
         { route: 'invoices', el: '.kpis', title: 'The money owed', say: 'The top shows what\'s outstanding, what\'s overdue, what came in the last 30 days, and finished jobs that still need an invoice.' },
         { el: '#inv-new', title: 'New invoice', say: 'Create the invoice from a won job. The lines come from the estimate, and any deposit already paid is subtracted, so the invoice shows only the balance.' },
+        { title: 'Permits and ready-to-send invoices', say: 'When a job needs a village permit, set the permit status in the deal. The moment you mark it Approved and save, the invoice is drafted for you from the estimate. It waits under Ready to send at the top of Invoices, and nothing goes to the customer until you press Preview and send.' },
         { title: 'Preview & send', say: 'Inside the invoice, Preview and send works just like estimates. The customer gets a View and pay button that opens their page with a Pay online link.' },
         { title: 'Square pay link and reminders', say: 'Create Square pay link makes a link for the exact balance. When it\'s paid, the invoice is marked paid by itself. For late invoices, Copy payment reminder writes a friendly reminder that includes the link.' },
         { title: 'Paid by check?', say: 'Record the payment in the invoice: amount, date, and method, or Paid in full. A paid invoice prints with a Paid stamp.' },
       ],
-      practice: ['Open Invoices and find "Ready to invoice".', 'Open any invoice and find Preview & send, Record payment, and Copy payment reminder.'],
+      practice: ['Open Invoices and find "Ready to invoice".', 'Open a deal and find the Permit section.', 'Open any invoice and find Preview & send, Record payment, and Copy payment reminder.'],
       quiz: [
         { q: 'The customer paid a $500 deposit on a $1,500 job. What does the invoice show as due?', a: ['$1,500', '$1,000', '$500'], c: 1, why: 'Deposits are subtracted automatically.' },
         { q: 'An invoice is two weeks late. What\'s the quick fix?', a: ['Copy payment reminder and send it', 'Delete the invoice', 'Wait'], c: 0, why: 'The reminder includes the balance and the pay link.' },

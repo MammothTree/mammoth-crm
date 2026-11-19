@@ -82,7 +82,7 @@
             <label class="field span-2"><span>Email message</span><textarea class="input" rows="7" id="rv-body">${u.esc(m.body)}</textarea></label>
             <label class="field span-2"><span>Text message</span><textarea class="input" rows="3" id="rv-sms">${u.esc(m.sms)}</textarea></label>
           </div>
-          <p class="hint">${live ? 'Email goes out from your Google account' + (co.email ? ' (' + u.esc(co.email) + ')' : '') + ' with a "Leave a Google review" button.' : 'Opens your email or messages app. Set up the connector in Integrations to send emails straight from the CRM.'} Yelp doesn't allow asking customers for reviews, so this only links to Google.</p>
+          <p class="hint">${live ? 'Email goes out from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + ' with a "Leave a Google review" button.' : 'Email opens Gmail with the message ready. Set up the connector in Integrations to send straight from the CRM.'} Yelp doesn't allow asking customers for reviews, so this only links to Google.</p>
           <p class="hint" id="rv-status"></p>`,
         actions: [
           { label: 'Don\'t ask', kind: 'ghost', left: true, onClick: () => { reviews.mark(deal, 'skip', '', true); if (done) done(); } },
@@ -93,13 +93,13 @@
             setTimeout(() => ui.modal({ title: 'Did the text go out?', size: 'sm', body: '<p>Tap Yes once you\'ve sent it, so the CRM won\'t suggest asking again.</p>',
               actions: [{ label: 'Not sent' }, { label: 'Yes, it went out', kind: 'primary', onClick: () => { reviews.mark(deal, 'sms', tel, false); ui.toast('Review request recorded'); if (done) done(); } }] }), 600);
           } },
-          { label: live ? 'Send email' : 'Open in email app', kind: 'primary', keepOpen: true, onClick: async (b, close) => {
+          { label: live ? 'Send with Gmail' : 'Open in Gmail', kind: 'primary', keepOpen: true, onClick: async (b, close) => {
             const to = u.qs('#rv-to', b).value.trim();
-            if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(to)) { ui.toast('Enter the customer\'s email address.', 'err'); return; }
+            if (!MT.mail.valid(to)) { ui.toast('Enter the customer\'s email address.', 'err'); return; }
             const subject = u.qs('#rv-subj', b).value.trim(), body = u.qs('#rv-body', b).value;
             if (!c.email) { c.email = to; store.save(true); }
             if (!live) {
-              window.location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+              MT.mail.openGmail({ to, subject, body });
               close();
               setTimeout(() => ui.modal({ title: 'Did the email go out?', size: 'sm', body: '<p>Tap Yes once you\'ve sent it, so the CRM won\'t suggest asking again.</p>',
                 actions: [{ label: 'Not sent' }, { label: 'Yes, it went out', kind: 'primary', onClick: () => { reviews.mark(deal, 'email', to, false); ui.toast('Review request recorded'); if (done) done(); } }] }), 600);
@@ -108,7 +108,7 @@
             const st = u.qs('#rv-status', b);
             st.textContent = 'Sending…';
             try {
-              await MT.pay.post('email', { to, subject, body, url: reviews.link(), button: 'Leave a Google review', color: MT.docColor(), fromName: co.name, replyTo: co.email });
+              await MT.mail.send({ to, subject, body, url: reviews.link(), button: 'Leave a Google review' });
               reviews.mark(deal, 'email', to, true);
               close();
               ui.toast('Review request emailed to ' + to);

@@ -69,7 +69,9 @@
         box.innerHTML = `<div class="doc-sheet" style="--pr-color:${u.esc(MT.docColor())}">${MT.docHTML(opts)}</div>`;
         document.body.appendChild(box);
         try {
-          return await h2p().set({ margin: [8, 6, 10, 6], filename, image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' }, jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } })
+          // scrollX/Y 0: otherwise a page scrolled down (the usual case after editing) comes out as a blank PDF.
+          // windowWidth: the full letter layout even when made on a phone.
+          return await h2p().set({ margin: [8, 6, 10, 6], filename, image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 820 }, jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } })
             .from(box.firstElementChild).outputPdf('blob');
         } finally { box.remove(); }
       } catch (e) { return null; }
@@ -136,6 +138,13 @@
     async open(type, id) {
       const rec = find(type, id);
       if (!rec) { ui.toast('Save it first.', 'err'); return; }
+      // A draft made ahead of time (e.g. when the permit came through) is dated the day you send it.
+      if (type === 'invoice' && rec.status === 'draft' && rec.auto && rec.date < u.todayISO()) {
+        rec.date = u.todayISO();
+        rec.dueDate = u.addDays(rec.date, u.num(store.state.settings.paymentTermsDays) || 15);
+        store.save(true);
+        docs.refreshDraft(type, rec);
+      }
       injectCSS();
       const info = docs.info(type, rec);
       const live = docs.ready();
@@ -144,7 +153,7 @@
         size: 'lg',
         body: `<div class="doc-preview"><div class="doc-sheet" style="--pr-color:${u.esc(MT.docColor())}">${MT.docHTML(info.opts)}</div></div>
           <div class="doc-sendinfo">${docs.trackHTML(type, rec) || ''}
-          <p class="hint">${live ? 'Email goes out from your Google account with the PDF attached and a link where the customer can ' + (type === 'estimate' ? 'approve, ask for changes, or pay the deposit' : 'pay online or ask a question') + '. You\'ll see here when they open it.' : 'To email straight from the CRM, show the customer an approval page, and see when they open it, set up the connector in Integrations → Square &amp; online estimates. Until then, Send opens your email or messages app.'}</p></div>`,
+          <p class="hint">${live ? 'Email goes out from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + ' with the PDF attached and a link where the customer can ' + (type === 'estimate' ? 'approve, ask for changes, or pay the deposit' : 'pay online or ask a question') + '. You\'ll see here when they open it.' : 'To email straight from the CRM, show the customer an approval page, and see when they open it, set up the connector in Integrations → Square &amp; online estimates. Until then, Send by email opens Gmail with the message ready.'}</p></div>`,
         actions: [
           { label: 'Print / save PDF', kind: 'ghost', left: true, keepOpen: true, onClick: () => MT.printDoc(info.opts) },
           { label: 'Download PDF', kind: 'ghost', keepOpen: true, onClick: async (b) => {
@@ -199,13 +208,18 @@
             <label class="field span-2"><span>Message</span><textarea class="input" rows="9" id="em-body">${u.esc(m.body)}</textarea></label>
             <label class="check span-2"><input type="checkbox" id="em-pdf" checked><span>Attach the PDF</span></label>
           </div>
-          <p class="hint">${live ? 'Sends from your Google account' + (co.email ? '; replies go to ' + u.esc(co.email) : '') + '. A button to the customer\'s page is added below your message.' : 'Opens your email app with this message. On a phone the PDF is attached for you; on a computer it downloads so you can attach it.'}</p>
+          <p class="hint">${live ? 'Sends from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + (co.email ? '; replies go to ' + u.esc(co.email) : '') + '. A button to the customer\'s page is added below your message.' : 'Opens Gmail with this message. On a phone you pick Gmail from the share menu and the PDF is attached for you; on a computer the PDF downloads so you can attach it in Gmail.'}</p>
           <p class="hint" id="em-status"></p>`,
         actions: [
           { label: 'Cancel' },
-          { label: live ? 'Send email' : 'Open in email app', kind: 'primary', keepOpen: true, onClick: async (b, close) => {
+          { label: live ? 'Send with Gmail' : 'Open in Gmail', kind: 'primary', keepOpen: true, onClick: async (b, close) => {
             const to = u.qs('#em-to', b).value.trim();
-            if (!/^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$/.test(to)) { ui.toast('Enter the customer\'s email address.', 'err'); return; }
+            if (!MT.mail.valid(to)) { ui.toast('Enter the customer\'s email address.', 'err'); return; }
+            const attach0 = u.qs('#em-pdf', b).checked;
+            const probe = attach0 && navigator.canShare ? new File([''], 'x.pdf', { type: 'application/pdf' }) : null;
+            const share = !live && !!probe && MT.mail.phone() && navigator.canShare({ files: [probe] });
+            // Opened now, during the click: Gmail opened after the PDF is made would be blocked as a pop-up.
+            const tab = !live && !share ? MT.mail.tab() : null;
             const stEl = u.qs('#em-status', b);
             const btn = u.qsa('.modal-foot .btn', b.closest('.modal') || document).pop();
             if (btn) btn.disabled = true;
@@ -221,23 +235,25 @@
                 let pdf = '';
                 if (attach) { say('Making the PDF…'); const blob = await docs.pdf(info.opts, docs.filename(type, rec)); if (blob) pdf = await docs.toBase64(blob); }
                 say('Sending…');
-                const r = await MT.pay.post('email', { to, subject, body, url, button: docs.messages(type, rec, info, url).button, color: MT.docColor(), fromName: co.name, replyTo: co.email, pdf, filename: docs.filename(type, rec), token: rec.share.token });
+                const r = await MT.mail.send({ to, subject, body, url, button: docs.messages(type, rec, info, url).button, pdf, filename: docs.filename(type, rec), token: rec.share.token });
                 docs.markSent(type, rec, 'email', r.to || to, true);
                 close();
-                ui.toast('Sent by email to ' + to + (attach && !pdf ? ' (without the PDF; the link has everything)' : ''));
+                ui.toast('Sent from Gmail to ' + to + (attach && !pdf ? ' (without the PDF; the link has everything)' : ''));
               } else {
+                if (attach) say('Making the PDF…');
                 const blob = attach ? await docs.pdf(info.opts, docs.filename(type, rec)) : null;
                 const file = blob ? new File([blob], docs.filename(type, rec), { type: 'application/pdf' }) : null;
-                if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+                if (file && share) {
                   await navigator.share({ files: [file], title: subject, text: body });
                 } else {
                   if (file) { const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); a.remove(); }
-                  window.location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+                  MT.mail.openGmail({ to, subject, body }, tab);
                 }
                 close();
                 docs.confirmSent(type, rec, 'email', to);
               }
             } catch (e) {
+              if (tab && !tab.closed) tab.close();
               if (e && e.name === 'AbortError') { if (btn) btn.disabled = false; say(''); return; }
               say(''); if (btn) btn.disabled = false;
               ui.toast('Not sent: ' + (e.message || e), 'err');
@@ -381,6 +397,7 @@
         }
         store.log('won', 'Estimate ' + rec.number + ' approved online by ' + (ev.name || who), meta);
         ui.toast('Approved! ' + (ev.name || who) + ' approved estimate ' + rec.number);
+        if (d && store.state.settings.autoInvoiceEstimate) MT.views.invoices.autoDraft(d.id, 'estimate was approved');
       } else if (ev.type === 'changes' || ev.type === 'question') {
         t.notes.push({ type: ev.type, at: ev.at, name: ev.name, note: ev.note });
         if (ev.type === 'changes') rec.changesRequested = ev.at;
