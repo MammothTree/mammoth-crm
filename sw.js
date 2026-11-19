@@ -1,7 +1,7 @@
 /* Mammoth CRM — service worker: makes the app installable and usable without signal.
    App files come from the network first, so every open with signal runs the newest version. The saved copy is
    used when offline or when the network is too slow to answer in a few seconds. */
-const SHELL_CACHE = 'mammoth-shell-20261119-143759';
+const SHELL_CACHE = 'mammoth-shell-20261119-145544';
 const RUNTIME_CACHE = 'mammoth-runtime-v1';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',

@@ -80,6 +80,8 @@
     const d = String(desc || '');
     const rule = b.rules.find((r) => r.match && d.toLowerCase().includes(r.match.toLowerCase()));
     if (rule) return rule.category;
+    // With Square synced, the sales are already counted from Square, so its deposits into the bank are transfers.
+    if (b.square && b.square.on && amount > 0 && /square|sq \*/i.test(d)) return 'Transfer';
     for (const [re, cat] of BUILTIN) if (re.test(d)) { if (cat === 'Job income' && amount < 0) continue; return cat; }
     return UNCAT;
   }
@@ -157,6 +159,113 @@
     rd.readAsText(file);
   }
 
+  /* ---------- Square, straight from the account (through the connector) ---------- */
+  const SQ_ACCT = 'ba_square';
+  const SQ_EVERY = 3 * 3600000;
+  const localDate = (iso) => { const d = new Date(iso); return isNaN(d) ? u.todayISO() : u.isoDate(d); };
+  function sqCfg() { const b = books(); if (!b.square) b.square = { on: false, from: '', last: '', lastAdded: 0, lastError: '' }; return b.square; }
+  const sqConnector = () => !!(MT.pay && MT.pay.ready());
+  const sqCanBooks = () => sqConnector() && !!MT.pay.cfg().books;
+
+  /** Brings in sales (with tips), card fees, refunds, and payouts since the last sync. Entries already here are skipped. */
+  async function squareSync() {
+    const b = books(), sq = sqCfg();
+    if (!b.accounts.some((a) => a.id === SQ_ACCT)) b.accounts.push({ id: SQ_ACCT, name: 'Square', kind: 'square' });
+    // Re-read the last 10 days each time: card fees can post a day or two after the sale.
+    const begin = sq.last ? new Date(Date.parse(sq.last) - 10 * 864e5).toISOString() : new Date((sq.from || u.todayISO().slice(0, 4) + '-01-01') + 'T00:00:00').toISOString();
+    const now = new Date().toISOString();
+    let r;
+    try { r = await MT.pay.get('books', { begin, end: now }); }
+    catch (e) { sq.lastError = /unknown action/.test(e.message) ? 'Update your connector (Integrations → Square & online estimates) to bring Square into Bookkeeping.' : e.message; store.save(true); throw new Error(sq.lastError); }
+    const have = new Set(b.txns.filter((t) => t.fitid).map((t) => t.accountId + '|' + t.fitid));
+    const jobs = {};
+    store.state.deals.forEach((d) => (d.payments || []).forEach((p) => { if (p.squareId) jobs[p.squareId] = d.title + ' (' + store.customerName(d.customerId) + ')'; }));
+    const whoOf = {};
+    let added = 0;
+    const add = (fitid, at, amount, desc, memo, category) => {
+      amount = Math.round(u.num(amount) * 100) / 100;
+      if (!amount) return;
+      const k = SQ_ACCT + '|' + fitid;
+      if (have.has(k)) return;
+      have.add(k);
+      const t = { id: u.uid('bt'), accountId: SQ_ACCT, date: localDate(at), desc, memo: memo || '', amount, fitid, source: 'square', category };
+      t.hash = hashOf(t);
+      b.txns.push(t);
+      added++;
+    };
+    (r.payments || []).forEach((p) => {
+      const who = p.name || p.email || (p.card ? p.card.trim() : '');
+      whoOf[p.id] = who;
+      const memo = [jobs[p.id] ? 'Job: ' + jobs[p.id] : '', p.tip ? 'Tip ' + u.money(p.tip, true) : '', p.receipt ? 'Receipt ' + p.receipt : '', p.note].filter(Boolean).join(' · ');
+      add('pay:' + p.id, p.at, p.total || p.amount, 'Square sale' + (who ? ': ' + who : ''), memo, 'Job income');
+      if (p.fee) add('fee:' + p.id, p.at, -p.fee, 'Square card fee' + (who ? ' (' + who + ')' : ''), u.money(p.total || p.amount, true) + ' sale', 'Bank & card fees');
+    });
+    (r.refunds || []).forEach((x) => {
+      const who = whoOf[x.paymentId] || '';
+      add('ref:' + x.id, x.at, -x.amount, 'Square refund' + (who ? ': ' + who : ''), x.reason, 'Job income');
+      if (x.fee) add('reffee:' + x.id, x.at, -x.fee, 'Square fee on refund', '', 'Bank & card fees');
+    });
+    (r.payouts || []).forEach((x) => {
+      add('out:' + x.id, x.at, -x.amount, 'Square payout to your bank', x.type === 'BATCH' ? 'Daily deposit' : x.type ? 'Instant transfer' : '', 'Transfer');
+      if (x.fee) add('outfee:' + x.id, x.at, -x.fee, 'Square instant transfer fee', '', 'Bank & card fees');
+    });
+    // Very busy ranges come in parts: the next sync continues from the last sale brought in.
+    const lastPay = (r.payments || []).reduce((m, p) => (p.at > m ? p.at : m), '');
+    sq.last = r.more && lastPay ? lastPay : now;
+    sq.lastAdded = added;
+    sq.lastError = '';
+    sq.more = !!r.more;
+    if (added) b.imports.push({ date: now, file: 'Square sync', added, dup: 0, accountId: SQ_ACCT });
+    store.save(true);
+    return { added, more: !!r.more, warnings: r.warnings || [] };
+  }
+  view.squareSync = squareSync;
+  view.categorize = (desc, amount) => categorize(desc, amount);
+
+  /** Square totals for the period: what customers paid, tips, fees, refunds, and what reached the bank. */
+  function squareSummary(txns) {
+    const sqx = txns.filter((t) => t.accountId === SQ_ACCT);
+    const pick = (re) => sqx.filter((t) => re.test(t.fitid || ''));
+    const sales = u.sum(pick(/^pay:/), (t) => t.amount);
+    const fees = -u.sum(pick(/fee:/), (t) => t.amount);
+    const refunds = -u.sum(pick(/^ref:/), (t) => t.amount);
+    const payouts = -u.sum(pick(/^out:/), (t) => t.amount);
+    const tips = u.sum(pick(/^pay:/), (t) => { const m = /Tip \$([\d,]+\.\d\d)/.exec(t.memo || ''); return m ? u.num(m[1].replace(/,/g, '')) : 0; });
+    return { count: pick(/^pay:/).length, sales, tips, fees, refunds, net: sales - fees - refunds, payouts };
+  }
+
+  function squarePanel(inPeriod, R) {
+    const sq = sqCfg();
+    if (!MT.pay || !MT.pay.connected() || !sqConnector()) {
+      return `<p>Bring every Square sale, tip, card fee, refund, and bank deposit into your books automatically. It uses the Square connector from Integrations, so your Square key stays on Google's servers.</p>
+        <div class="btn-row"><button class="btn primary" data-sqgo>Set up the Square connector</button></div>`;
+    }
+    if (!sqCanBooks()) {
+      return `<p>Your Square connector is working. One update turns this on: open <b>Integrations → Square &amp; online estimates</b>, copy the code, paste it over the old code in Apps Script, run <b>authorize</b>, and deploy a new version.</p>
+        <div class="btn-row"><button class="btn primary" data-sqgo>Open Integrations</button><button class="btn ghost" data-sqcheck>I updated it, check again</button></div>`;
+    }
+    if (!sq.on) {
+      const y = +u.todayISO().slice(0, 4);
+      return `<p>Bring in every Square sale (with tips), card fee, refund, and payout to your bank, then keep it up to date every few hours while Bookkeeping is open.</p>
+        <ul class="bullets"><li><b>Sales</b> go to Job income, <b>card fees</b> to Bank &amp; card fees, and <b>refunds</b> come off income.</li><li><b>Payouts</b> to your bank are transfers, not income, so nothing is counted twice when you also import the bank account.</li></ul>
+        <label class="field"><span>Start from</span><select class="input" id="sq-from"><option value="${y}-01-01">January 1, ${y} (this year)</option><option value="${y - 1}-01-01">January 1, ${y - 1} (last year too, for taxes)</option><option value="${y - 2}-01-01">January 1, ${y - 2}</option></select></label>
+        <div class="btn-row"><button class="btn primary" id="sq-on">Connect Square to Bookkeeping</button></div>`;
+    }
+    const sm = squareSummary(inPeriod);
+    const row = (l, v, cls) => `<div class="sum-row ${cls || ''}"><span>${l}</span><span>${v}</span></div>`;
+    return `<p class="hint">${sq.last ? 'Last synced ' + new Date(sq.last).toLocaleString() + (sq.lastAdded ? ' (' + sq.lastAdded + ' new)' : '') + '. ' : ''}Since ${u.fmtDate(sq.from)}. Updates every few hours while Bookkeeping is open.${sq.more ? ' <b>More history is still coming: select Sync now again.</b>' : ''}</p>
+      ${sq.lastError ? `<p class="hint neg">${u.esc(sq.lastError)}</p>` : ''}
+      ${sm.count ? `<div class="sum-lines sq-sum">
+        ${row('Square sales (' + sm.count + ')', u.money(sm.sales, true))}
+        ${sm.tips ? row('Including tips', u.money(sm.tips, true)) : ''}
+        ${row('Card fees', '−' + u.money(sm.fees, true) + (sm.sales ? ' <small>(' + u.pct(sm.fees / sm.sales, 1) + ')</small>' : ''))}
+        ${sm.refunds ? row('Refunds', '−' + u.money(sm.refunds, true)) : ''}
+        ${row('You kept', u.money(sm.net, true), 'strong')}
+        ${row('Deposited to your bank', u.money(sm.payouts, true))}
+      </div>` : `<p class="hint">No Square activity in ${u.esc(R.label)}.</p>`}
+      <div class="btn-row"><button class="btn primary sm" id="sq-sync">Sync now</button><button class="btn ghost sm" id="sq-off">Stop syncing</button></div>`;
+  }
+
   /* ---------- exports ---------- */
   const csvCell = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   function summary(txns) {
@@ -194,7 +303,7 @@
         ${sm.non.length ? '<tr class="sec"><td colspan="2">Not income or expense</td></tr>' + sm.non.map((x) => row(x[0], x[1])).join('') : ''}
         ${sm.uncat ? row('Uncategorized (needs review)', sm.uncat, 'warn') : ''}
       </tbody></table>
-      <p class="pr-foot">Cash basis, from bank transactions imported into the CRM. Prepared for the accountant.</p>`;
+      <p class="pr-foot">Cash basis, from ${books().square && books().square.on ? 'Square (sales, tips, card fees, refunds) and ' : ''}bank transactions in the CRM. Square payouts to the bank are transfers, not income. Prepared for the accountant.</p>`;
     document.body.classList.add('printing');
     const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
     window.addEventListener('afterprint', done);
@@ -268,6 +377,11 @@
         <article class="kpi"><h3 class="kpi-label">To review</h3><div class="kpi-value ${uncat ? 'neg' : ''}">${uncat}</div><div class="kpi-sub">${uncat ? 'Uncategorized transactions' : 'Everything is categorized'}</div></article>
       </section>
 
+      <section class="panel" id="bk-square">
+        <div class="panel-head"><h3>Square</h3>${sqCfg().on && sqCanBooks() ? ui.badge(sqCfg().lastError ? 'Needs attention' : 'Syncing', sqCfg().lastError ? 'bad' : 'good') : ui.badge('Not connected', '')}</div>
+        ${squarePanel(inPeriod, R)}
+      </section>
+
       <div class="grid-2-1">
         <section class="panel">
           <div class="panel-head"><h3>Spending by category</h3></div>
@@ -305,12 +419,32 @@
 
       <section class="panel">
         <div class="panel-head"><h3>Automatic bank connection</h3>${ui.badge('Planned', '')}</div>
-        <p>Pulling transactions straight from your bank every day needs a bank-data service such as Plaid. That's what QuickBooks and similar apps use. It only runs on a secure server, has its own sign-up and per-account fees, and fits with the cloud connector and shared database. Until then, a weekly or monthly bank-file import takes about a minute, and duplicates are skipped automatically.</p>
+        <p>${sqCfg().on ? 'Square already flows in on its own (above). Expenses paid from your bank or card still come from a bank file. ' : ''}Pulling transactions straight from your bank every day needs a bank-data service such as Plaid. That's what QuickBooks and similar apps use. It only runs on a secure server, has its own sign-up and per-account fees, and fits with the cloud connector and shared database. Until then, a weekly or monthly bank-file import takes about a minute, and duplicates are skipped automatically.</p>
       </section>`;
 
     if (sm.exp.length) MT.charts.hbars(u.qs('#bk-cats', root), sm.exp.map((x) => ({ label: x[0], value: x[1] })).sort((a, c) => c.value - a.value), { tip: (x) => '<strong>' + u.esc(x.label) + '</strong><div class="tip-row">' + u.money(x.value, true) + '</div><div class="tip-muted">' + (sm.totalOut ? u.pct(x.value / sm.totalOut) : '') + ' of spending</div>' });
 
     const rerender = () => renderBooks(root);
+    // Square
+    const sq = sqCfg();
+    const runSync = async (btn, quiet) => {
+      if (view.syncing) return;
+      view.syncing = true;
+      if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+      try {
+        const r = await squareSync();
+        if (!quiet || r.added) ui.toast(r.added ? r.added + ' Square ' + (r.added === 1 ? 'entry' : 'entries') + ' added to your books' + (r.more ? '. More to come: sync again.' : '') : 'Square is up to date');
+        if (r.warnings.length && !quiet) ui.toast(r.warnings.join(' '), 'err');
+      } catch (e) { if (!quiet) ui.toast(e.message, 'err'); }
+      view.syncing = false;
+      if (MT.app.route === 'books') rerender();
+    };
+    u.qsa('[data-sqgo]', root).forEach((x) => x.addEventListener('click', () => { MT.views.integrations.open = 'square'; MT.app.go('integrations'); }));
+    const sqc = u.qs('[data-sqcheck]', root); if (sqc) sqc.addEventListener('click', async () => { sqc.disabled = true; try { await MT.pay.test(); } catch (e) { ui.toast(e.message, 'err'); } if (!MT.pay.cfg().books) ui.toast('Still the older connector. Make sure you deployed a new version.', 'err'); rerender(); });
+    const son = u.qs('#sq-on', root); if (son) son.addEventListener('click', () => { sq.on = true; sq.from = u.qs('#sq-from', root).value; sq.last = ''; store.save(true); runSync(son); });
+    const ssy = u.qs('#sq-sync', root); if (ssy) ssy.addEventListener('click', () => runSync(ssy));
+    const sof = u.qs('#sq-off', root); if (sof) sof.addEventListener('click', () => ui.confirm('Stop syncing Square?', 'Square entries already in your books stay. New sales stop coming in until you connect again.', 'Stop syncing', () => { sq.on = false; store.save(); }));
+    if (sq.on && sqCanBooks() && !view.syncing && navigator.onLine !== false && !(view.sqTried > Date.now() - 6e5) && (!sq.last || Date.now() - Date.parse(sq.last) > SQ_EVERY)) { view.sqTried = Date.now(); runSync(null, true); }
     u.qsa('[data-period]', root).forEach((x) => x.addEventListener('click', () => { view.period = x.dataset.period; if (view.period === 'custom' && !view.from) { view.from = R.from; view.to = R.to; } rerender(); }));
     const pv = u.qs('#bk-prev', root); if (pv) pv.addEventListener('click', () => { step(-1); rerender(); });
     const nx = u.qs('#bk-next', root); if (nx) nx.addEventListener('click', () => { step(1); rerender(); });

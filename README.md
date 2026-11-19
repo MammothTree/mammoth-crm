@@ -93,6 +93,11 @@ Setup steps are on **Integrations → Square & online estimates**. One free Goog
 - **Pay links:** **Request the deposit**, each invoice, and payment reminders create a Square payment link for the exact amount. Links are reused rather than duplicated, and saved on the job (`deal.payLinks`).
 - **Automatic recording:** while the CRM is open, it checks unpaid links every 2 minutes. Each payment is recorded as a Square payment on the job and its invoice. A paid deposit also accepts the estimate and moves the job to Won.
 - **Other Square payments** (card reader, tap to pay): **Bring in other Square payments** opens the same matching screen as the CSV import. Already recorded payments are skipped, so nothing is counted twice.
+- **Square → Bookkeeping** (connector v4 `books` action): **Bookkeeping → Square → Connect Square to Bookkeeping**, starting Jan 1 of this year or an earlier year.
+  - What comes in: sales (gross with tips) as Job income, card fees as Bank & card fees, refunds against income, and payouts to the bank as Transfer. All of it lands in the account "Square" (`ba_square`), keyed by `fitid` (`pay:`, `fee:`, `ref:`, `out:`).
+  - Each sync re-reads the last 10 days, so late card fees arrive, and it runs on its own every 3 hours while Bookkeeping is open.
+  - Once Square is synced, bank lines from Square count as transfers, and devices merge Square entries by `fitid`.
+  - Square's API has no expense or Square Checking transactions, so expenses still come from bank-file imports.
 - **Updating the connector:** when `js/pay-connector.js` changes, paste the new code, run `authorize` again, and use Deploy → Manage deployments → Edit → New version. The CRM rechecks the connector daily; Integrations shows which Gmail it sends from and flags an older version.
 
 ## First steps for real use

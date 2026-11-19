@@ -12,6 +12,7 @@
      view it, approve it, ask for changes, or pay. Opens and replies are logged in a Google Sheet it creates for you.
    - Email: estimates, invoices, and any other email from the CRM go out through your Gmail (they show in Sent, and replies
      come back to your inbox), with the PDF attached.
+   - Bookkeeping: with Square connected, sales, tips, card fees, refunds, and payouts to your bank flow into the CRM's books.
    - Square (optional): add SQUARE_TOKEN under Project Settings → Script properties (your Square production access token).
      Optional: SQUARE_ENV = sandbox (testing), SQUARE_VERSION = a Square API version date.
    Then Deploy → New deployment → Web app → Execute as: Me, Who has access: Anyone. */
@@ -52,6 +53,7 @@ function handle_(p) {
     if (p.action === 'check') return out_(check_(c, p));
     if (p.action === 'payments') return out_(recent_(c, p));
     if (p.action === 'cancel') return out_(cancel_(c, p));
+    if (p.action === 'books') return out_(books_(c, p));
     return out_({ error: 'unknown action' });
   } catch (err) {
     return out_({ error: String(err && err.message || err) });
@@ -98,7 +100,7 @@ function status_(c) {
 }
 
 function statusAll_(c) {
-  var st = { ok: true, version: 3, square: false, env: c.env, locations: [], email: true, gmail: true, from: Session.getEffectiveUser().getEmail(), quota: MailApp.getRemainingDailyQuota() };
+  var st = { ok: true, version: 4, books: true, square: false, env: c.env, locations: [], email: true, gmail: true, from: Session.getEffectiveUser().getEmail(), quota: MailApp.getRemainingDailyQuota() };
   if (c.token) {
     try { var sq = status_(c); st.square = true; st.locations = sq.locations; }
     catch (err) { st.squareError = String(err && err.message || err); }
@@ -189,6 +191,56 @@ function recent_(c, p) {
   }
   list.forEach(function (x) { x.name = names[x.customerId] || ''; });
   return { payments: list };
+}
+
+/* ---------- Bookkeeping: everything that moved through Square in a date range ---------- */
+function cents_(m) { return (m && m.amount || 0) / 100; }
+function feeOf_(list) { var f = 0; (list || []).forEach(function (x) { f += cents_(x.amount_money); }); return Math.round(f * 100) / 100; }
+/* All pages of a Square list (oldest first), up to `max` pages of 100. */
+function pages_(c, path, key, begin, end, max) {
+  var out = [], cursor = '', n = 0;
+  do {
+    var q = '?sort_order=ASC&limit=100' + (begin ? '&begin_time=' + encodeURIComponent(begin) : '') + (end ? '&end_time=' + encodeURIComponent(end) : '') + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+    var j = api_(c, 'get', path + q);
+    (j[key] || []).forEach(function (x) { out.push(x); });
+    cursor = j.cursor || '';
+    n++;
+  } while (cursor && n < max);
+  return { list: out, more: !!cursor };
+}
+/* Sales (with tips and card fees), refunds, and payouts to your bank, for the CRM's Bookkeeping. */
+function books_(c, p) {
+  var begin = String(p.begin || ''), end = String(p.end || '');
+  var pr = pages_(c, '/payments', 'payments', begin, end, 60);
+  var payments = pr.list.filter(function (x) { return x.status === 'COMPLETED'; }).map(function (x) {
+    var s = slim_(x);
+    s.total = cents_(x.total_money) || s.amount + s.tip;
+    s.fee = feeOf_(x.processing_fee);
+    s.feePending = !x.processing_fee;
+    return s;
+  });
+  var refunds = [], payouts = [], warnings = [];
+  try {
+    refunds = pages_(c, '/refunds', 'refunds', begin, end, 20).list.filter(function (x) { return x.status === 'COMPLETED'; })
+      .map(function (x) { return { id: x.id, paymentId: x.payment_id || '', at: x.created_at, amount: cents_(x.amount_money), fee: feeOf_(x.processing_fee), reason: x.reason || '' }; });
+  } catch (err) { warnings.push('Refunds: ' + String(err && err.message || err)); }
+  try {
+    payouts = pages_(c, '/payouts', 'payouts', begin, end, 20).list.filter(function (x) { return x.status === 'PAID' || x.status === 'SENT'; })
+      .map(function (x) { return { id: x.id, at: x.arrival_date || x.created_at, amount: cents_(x.amount_money), fee: cents_(x.payout_fee && x.payout_fee[0] && x.payout_fee[0].amount_money), status: x.status, type: x.type || '', dest: (x.destination && x.destination.type) || '' }; });
+  } catch (err) { warnings.push('Payouts: ' + String(err && err.message || err)); }
+  // Customer names, so each sale in your books says who paid.
+  var ids = [];
+  payments.forEach(function (x) { if (x.customerId && ids.indexOf(x.customerId) < 0) ids.push(x.customerId); });
+  ids = ids.slice(0, 150);
+  var names = {};
+  if (ids.length) {
+    var reqs = ids.map(function (id) { return { url: c.base + '/customers/' + encodeURIComponent(id), method: 'get', headers: headers_(c), muteHttpExceptions: true }; });
+    UrlFetchApp.fetchAll(reqs).forEach(function (r, i) {
+      try { var cu = JSON.parse(r.getContentText()).customer || {}; names[ids[i]] = [cu.given_name, cu.family_name].filter(String).join(' ') || cu.company_name || cu.email_address || ''; } catch (err) { /* skip */ }
+    });
+  }
+  payments.forEach(function (x) { x.name = names[x.customerId] || ''; });
+  return { payments: payments, refunds: refunds, payouts: payouts, more: pr.more, warnings: warnings };
 }
 
 /* ---------- Estimates & invoices shared with customers ---------- */
@@ -371,7 +423,7 @@ function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).set
 
   window.MT = window.MT || {};
   MT.payConnector = {
-    VERSION: 3,
+    VERSION: 4,
     code(key) {
       const src = connectorCode.toString();
       const a = src.indexOf('// ==== START ====') + '// ==== START ===='.length;

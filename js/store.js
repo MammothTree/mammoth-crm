@@ -182,6 +182,7 @@
       txns: (b.txns || []).filter((t) => !sampleAccts.has(t.accountId)),
       rules: b.rules || [],
       imports: (b.imports || []).filter((i) => !sampleAccts.has(i.accountId)),
+      square: b.square,
     };
   }
 
@@ -229,6 +230,13 @@
     if (remote.books) {
       out.books = out.books || {};
       ['accounts', 'txns', 'imports'].forEach((k) => { out.books[k] = union(out.books[k], remote.books[k]); });
+      // The same bank or Square entry brought in on two devices counts once (this device's copy wins).
+      const fit = new Set();
+      out.books.txns = out.books.txns.filter((t) => { if (!t.fitid) return true; const k = t.accountId + '|' + t.fitid; if (fit.has(k)) return false; fit.add(k); return true; });
+      if (remote.books.square) {
+        const ls = out.books.square || {}, rs = remote.books.square;
+        out.books.square = Object.assign({}, rs, ls, { last: (ls.last || '') > (rs.last || '') ? ls.last : rs.last || '' });
+      }
       const seen = new Set((out.books.rules || []).map((r) => JSON.stringify(r)));
       out.books.rules = (out.books.rules || []).concat((remote.books.rules || []).filter((r) => !seen.has(JSON.stringify(r))));
     }

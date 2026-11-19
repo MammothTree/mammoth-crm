@@ -68,6 +68,7 @@
       // Version 3 sends through Gmail and says which address.
       c.from = st.from || '';
       c.gmail = !!st.gmail;
+      c.books = !!st.books; // version 4: Square sales, fees, refunds, and payouts for Bookkeeping
       c.statusAt = new Date().toISOString();
       const active = c.locations.filter((l) => l.status === 'ACTIVE');
       if (!c.locationId || !c.locations.some((l) => l.id === c.locationId)) c.locationId = (active[0] || c.locations[0] || {}).id || '';

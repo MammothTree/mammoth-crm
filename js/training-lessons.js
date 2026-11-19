@@ -256,7 +256,8 @@
       summary: 'Importing bank files, categories, and reports for the accountant.',
       steps: [
         { route: 'books', title: 'Bookkeeping has its own PIN', say: 'Bookkeeping is locked with its own PIN, so it stays private even on a shared device.' },
-        { title: 'Import bank files', say: 'Download a CSV, QFX, or OFX file from the bank or card website and import it. Transactions are sorted into categories automatically, duplicates are skipped, and your corrections are remembered.' },
+        { title: 'Square comes in on its own', say: 'With Square connected, every Square sale, tip, card fee, refund, and deposit to the bank lands in the books by itself every few hours. Sales are income, fees are an expense, and deposits to the bank are transfers, so nothing is counted twice.' },
+        { title: 'Import bank files', say: 'For expenses, download a CSV, QFX, or OFX file from the bank or card website and import it. Transactions are sorted into categories automatically, duplicates are skipped, and your corrections are remembered.' },
         { title: 'Reports', say: 'Pick any period and download a profit and loss, as a PDF or spreadsheet, plus all transactions for the accountant.' },
       ],
       practice: ['Ask for the Bookkeeping PIN, then find the import button and the profit & loss download.'],
