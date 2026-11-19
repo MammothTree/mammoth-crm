@@ -77,6 +77,8 @@
     s.invoices.forEach((x) => calc.invoicePayments(x).forEach((pmt) => { if (pmt.date >= since && pmt.date <= today) collected += u.num(pmt.amount); }));
     const ready = s.deals.filter((d) => d.stage === 'won' && (d.scheduledDate || d.closedAt) && (d.scheduledDate || d.closedAt) <= today && !store.invoicesFor(d.id).length);
     const drafts = s.invoices.filter((x) => x.status === 'draft').sort((a, b) => (a.number < b.number ? 1 : -1));
+    const lastPaid = (x) => calc.invoicePayments(x).reduce((m, p) => (p.date > m ? p.date : m), '');
+    const receipts = s.invoices.filter((x) => calc.invoiceStatus(x) === 'paid' && !(x.receiptSends || []).length && !x.receiptSkip && lastPaid(x) >= u.addDays(today, -45)).sort((a, b) => (lastPaid(a) < lastPaid(b) ? 1 : -1));
     const rows = all.filter((x) => {
       const st = calc.invoiceStatus(x);
       if (view.filter === 'unpaid' && !['sent', 'partial', 'overdue'].includes(st)) return false;
@@ -99,6 +101,8 @@
         <ul class="list compact">${ready.slice(0, 6).map((d) => `<li class="list-row" data-ready="${d.id}"><div class="grow"><div class="row-title">${u.esc(d.title)}</div><div class="row-sub">${u.esc(store.customerName(d.customerId))}, job ${u.fmtDate(d.scheduledDate || d.closedAt)}</div></div><div class="amt">${u.money(d.value)}</div><span class="link">Invoice</span></li>`).join('')}</ul></section>` : ''}
       ${drafts.length ? `<section class="panel ready-panel" id="inv-drafts"><div class="panel-head"><h3>Ready to send</h3><span class="hint">Drafts the customer hasn't seen yet</span></div>
         <ul class="list compact">${drafts.slice(0, 8).map((x) => { const d = store.deal(x.dealId); const pm = d && d.permit && d.permit.status === 'approved'; return `<li class="list-row" data-draft="${x.id}"><div class="grow"><div class="row-title">${u.esc(x.number)}: ${u.esc(store.customerName(x.customerId))}</div><div class="row-sub">${u.esc(d ? d.title : '')}${x.auto ? ' · drafted automatically when the ' + u.esc(x.auto) : ''}${pm && x.auto !== 'permit was approved' ? ' · permit approved' : ''}</div></div><div class="amt">${u.money(calc.invoiceTotals(x).total)}</div><button class="btn primary sm" data-sendnow="${x.id}">Preview &amp; send</button></li>`; }).join('')}</ul></section>` : ''}
+      ${receipts.length ? `<section class="panel ready-panel" id="inv-receipts"><div class="panel-head"><h3>Send a receipt</h3><span class="hint">Paid in the last 45 days, no receipt yet</span></div>
+        <ul class="list compact">${receipts.slice(0, 6).map((x) => `<li class="list-row" data-rcpt="${x.id}"><div class="grow"><div class="row-title">${u.esc(x.number)}: ${u.esc(store.customerName(x.customerId))}</div><div class="row-sub">Paid ${u.fmtDate(lastPaid(x))}</div></div><div class="amt">${u.money(calc.invoiceTotals(x).total)}</div><button class="btn ghost sm" data-rskip="${x.id}">Not needed</button><button class="btn primary sm" data-rsend="${x.id}">Send receipt</button></li>`).join('')}</ul></section>` : ''}
       ${MT.reviews.panelHTML()}
       <div class="toolbar">
         <input type="search" class="input" id="inv-q" placeholder="Search number, client, or job" value="${u.esc(view.q)}" aria-label="Search invoices">
@@ -123,6 +127,8 @@
       if (e.target.closest('[data-sendnow]')) { MT.docs.open('invoice', li.dataset.draft); return; }
       view.draft = JSON.parse(JSON.stringify(store.invoice(li.dataset.draft))); renderEditor(root); window.scrollTo(0, 0);
     }));
+    u.qsa('[data-rsend]', root).forEach((bn) => bn.addEventListener('click', () => MT.docs.open('receipt', bn.dataset.rsend)));
+    u.qsa('[data-rskip]', root).forEach((bn) => bn.addEventListener('click', () => { const x = store.invoice(bn.dataset.rskip); if (x) { x.receiptSkip = true; store.save(); } }));
     u.qsa('[data-review]', root).forEach((li) => li.addEventListener('click', () => MT.reviews.open(li.dataset.review, () => renderList(root))));
     u.qsa('[data-ready]', root).forEach((li) => li.addEventListener('click', () => { view.draft = newForDeal(li.dataset.ready); renderEditor(root); window.scrollTo(0, 0); }));
     const all2 = u.qs('#inv-all', root);
@@ -257,6 +263,7 @@
           <button class="btn primary" id="iv-save">${saved ? 'Save changes' : 'Save invoice'}</button>
           ${!stored || stored.status === 'draft' ? '<button class="btn" id="iv-send">Mark as sent</button>' : ''}
           <button class="btn" id="iv-preview">Preview &amp; send</button>
+          ${stored && paid > 0 ? `<button class="btn ${bal < 0.005 && !(stored.receiptSends || []).length ? 'good' : 'ghost'}" id="iv-receipt">${(stored.receiptSends || []).length ? 'Send the receipt again' : 'Send receipt'}</button>` : ''}
           ${stored && calc.invoiceStatus(stored) === 'paid' && d ? `<button class="btn ${d.reviewAsked && d.reviewAsked.via !== 'skip' ? 'ghost' : 'good'}" id="iv-review">${d.reviewAsked && d.reviewAsked.via !== 'skip' ? 'Review requested ' + u.fmtDate(d.reviewAsked.at.slice(0, 10)) : 'Ask for a Google review'}</button>` : ''}
           <button class="btn ghost" id="iv-print">Print or save PDF</button>
           ${stored && bal > 0 && stored.status !== 'draft' ? '<button class="btn ghost" id="iv-remind">Copy payment reminder</button>' : ''}
@@ -307,6 +314,7 @@
       const send = q('#iv-send'); if (send) send.addEventListener('click', () => { if (commit('sent')) ui.toast('Invoice ' + inv.number + ' marked as sent'); });
       q('#iv-print').addEventListener('click', () => printInvoice(inv));
       q('#iv-preview').addEventListener('click', () => { if (commit()) MT.docs.open('invoice', inv.id); });
+      const rc = q('#iv-receipt'); if (rc) rc.addEventListener('click', () => { if (commit()) MT.docs.open('receipt', inv.id); });
       const rv = q('#iv-review'); if (rv) rv.addEventListener('click', () => MT.reviews.open(inv.dealId, () => renderEditor(root)));
       const rem = q('#iv-remind'); if (rem) rem.addEventListener('click', async () => {
         if (MT.pay.ready()) { rem.disabled = true; try { await squareLink(); } catch (e) { /* the reminder still works with the saved link */ } rem.disabled = false; }
@@ -336,6 +344,9 @@
         store.log('payment', 'Received ' + u.money(amount, true) + ' from ' + store.customerName(inv.customerId) + ' on ' + inv.number, { customerId: inv.customerId, dealId: inv.dealId });
         store.save();
         ui.toast('Payment recorded');
+        const st = store.invoice(inv.id);
+        if (st && calc.invoiceStatus(st) === 'paid') ui.modal({ title: 'Paid in full. Send the receipt?', size: 'sm', body: `<p>${u.esc(store.customerName(st.customerId))} has paid ${st.number} in full. Send them a receipt now (email or text, PDF attached)?</p>`,
+          actions: [{ label: 'Later' }, { label: 'Send receipt', kind: 'primary', onClick: () => { setTimeout(() => MT.docs.open('receipt', st.id), 0); } }] });
       };
       q('#iv-pay').addEventListener('click', () => addPay(u.num(q('#iv-amt').value)));
       q('#iv-full').addEventListener('click', () => { const st = store.invoice(inv.id); addPay(st ? calc.invoiceBalance(st) : calc.invoiceTotals(inv).total); });
@@ -382,6 +393,37 @@
     };
   }
   MT.docs.builders.invoice = invoiceInfo;
+
+  /** The receipt for an invoice: what was billed, each payment received, and what's left (usually nothing). */
+  function receiptInfo(inv) {
+    const d = store.deal(inv.dealId);
+    const c = store.customer(inv.customerId) || {};
+    const t = calc.invoiceTotals(inv);
+    const pays = calc.invoicePayments(inv).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+    const paid = u.sum(pays, (p) => p.amount);
+    const bal = Math.max(0, Math.round((t.total - paid) * 100) / 100);
+    const last = pays.length ? pays[pays.length - 1].date : u.todayISO();
+    return {
+      opts: {
+        title: 'Receipt',
+        meta: [['Receipt for', inv.number], ['Paid on', u.fmtDate(last)], ['Invoice date', u.fmtDate(inv.date)]],
+        stamp: bal < 0.005 ? 'Paid in full' : '',
+        parties: [
+          { heading: 'Received from', lines: [c.name, c.company, [c.address, c.city].filter(Boolean).join(', '), c.email] },
+          { heading: 'For', lines: [d && d.scheduledDate ? 'Work done ' + u.fmtDate(d.scheduledDate) : ''], bold: d ? d.title : '' },
+        ],
+        lines: inv.items.map((x) => ({ desc: x.desc, qty: x.qty, unit: x.unit, price: u.num(x.price), total: u.num(x.qty) * u.num(x.price) })),
+        totals: [t.discount ? ['Discount', -t.discount] : null, t.tax ? ['Sales tax (' + inv.taxRate + '%)', t.tax] : null, ['Total', t.total]]
+          .concat(pays.map((p) => ['Paid ' + u.fmtDate(p.date) + ' (' + (p.method || 'payment') + (p.deposit ? ', deposit' : '') + ')', -u.num(p.amount)]))
+          .concat([[bal < 0.005 ? 'Balance' : 'Balance still due', bal, true]]).filter(Boolean),
+        notes: 'Thank you for your business! Keep this receipt for your records.',
+        footer: store.state.settings.estimateFooter || '',
+      },
+      title: d ? d.title : 'Tree service', number: inv.number, customerId: inv.customerId, dealId: inv.dealId,
+      total: t.total, paid, balance: bal, lastPaid: last,
+    };
+  }
+  MT.docs.builders.receipt = receiptInfo;
 
   function invoiceDoc(inv) {
     const c = store.customer(inv.customerId) || {};

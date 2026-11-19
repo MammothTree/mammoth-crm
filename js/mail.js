@@ -41,7 +41,8 @@
     },
 
     /** Email window for anything: sends from Gmail in the CRM, or opens Gmail with it filled in.
-        o: {title, to, subject, body, url, button, log: 'what it was', meta: {customerId, dealId}, onSent(to, confirmed)} */
+        o: {title, to, subject, body, url, button, log: 'what it was', meta: {customerId, dealId}, onSent(to, confirmed),
+            attach: {filename, make: async () => Blob} for a PDF} */
     compose(o) {
       const live = mail.direct();
       const from = mail.from();
@@ -51,6 +52,7 @@
             <label class="field span-2"><span>To</span><input class="input" type="email" id="ml-to" value="${u.esc(o.to || '')}" placeholder="name@example.com"></label>
             <label class="field span-2"><span>Subject</span><input class="input" id="ml-subj" value="${u.esc(o.subject || '')}"></label>
             <label class="field span-2"><span>Message</span><textarea class="input" rows="10" id="ml-body">${u.esc(o.body || '')}</textarea></label>
+            ${o.attach ? `<label class="check span-2"><input type="checkbox" id="ml-pdf" checked><span>Attach ${u.esc(o.attach.filename)}${live ? '' : ' (it downloads so you can attach it in Gmail)'}</span></label>` : ''}
           </div>
           <p class="hint">${live ? 'Sends from your Gmail' + (from ? ' (' + u.esc(from) + ')' : '') + '. It shows in your Gmail Sent folder and replies come back to your inbox.' : 'Opens Gmail with this message ready to send. To send straight from the CRM, set up the connector in Integrations → Square &amp; online estimates.'}</p>
           <p class="hint" id="ml-status"></p>`,
@@ -64,16 +66,25 @@
               if (o.log) { store.log('message', o.log + ' emailed to ' + to + (confirmed ? '' : ' (opened in Gmail)'), o.meta || {}); store.save(true); }
               if (o.onSent) o.onSent(to, confirmed);
             };
-            if (!live) { mail.openGmail({ to, subject, body }); close(); done(false); return; }
+            const attach = o.attach && u.qs('#ml-pdf', b).checked;
             const btn = u.qsa('.modal-foot .btn', b.closest('.modal')).pop();
             const st = u.qs('#ml-status', b);
-            btn.disabled = true; st.textContent = 'Sending…';
+            if (!live && !attach) { mail.openGmail({ to, subject, body }); close(); done(false); return; }
+            const tab = live ? null : mail.tab(); // opened during the click so it isn't blocked
+            btn.disabled = true;
             try {
-              await mail.send({ to, subject, body, url: o.url || '', button: o.button || '' });
+              let blob = null;
+              if (attach) { st.textContent = 'Making the PDF…'; blob = await o.attach.make(); if (!blob) throw new Error('Couldn\'t make the PDF here. Check your internet connection and try again.'); }
+              if (!live) {
+                const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = o.attach.filename; document.body.appendChild(a); a.click(); a.remove();
+                mail.openGmail({ to, subject, body }, tab); close(); done(false); return;
+              }
+              st.textContent = 'Sending…';
+              await mail.send({ to, subject, body, url: o.url || '', button: o.button || '', pdf: blob ? await MT.docs.toBase64(blob) : '', filename: attach ? o.attach.filename : '' });
               close();
               ui.toast('Sent from Gmail to ' + to);
               done(true);
-            } catch (e) { btn.disabled = false; st.textContent = ''; ui.toast('Not sent: ' + e.message, 'err'); }
+            } catch (e) { if (tab && !tab.closed) tab.close(); btn.disabled = false; st.textContent = ''; ui.toast('Not sent: ' + e.message, 'err'); }
           } },
         ],
       });

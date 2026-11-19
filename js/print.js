@@ -55,6 +55,15 @@
 .doc-sheet .pr-pay span { color: #555; font-size: 9pt; }
 .doc-sheet .pr-sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 10pt; }
 .doc-sheet .pr-foot { margin-top: 28px; font-size: 9pt; color: #666; text-align: center; }
+.doc-sheet .pr-hy { display: flex; justify-content: space-between; align-items: baseline; margin: 20px 0 4px; padding-bottom: 4px; border-bottom: 2px solid var(--pr-color); color: var(--pr-color); font-size: 14pt; font-weight: 800; break-after: avoid; page-break-after: avoid; }
+.doc-sheet .pr-hy span { font-size: 11pt; color: #111; }
+.doc-sheet .pr-hist { width: 100%; }
+.doc-sheet .pr-hist td { padding: 7px 4px; border-bottom: 1px solid #ddd; vertical-align: top; break-inside: avoid; page-break-inside: avoid; }
+.doc-sheet .pr-hist td:first-child { width: 92px; color: #555; white-space: nowrap; }
+.doc-sheet .pr-hist td:last-child { text-align: right; white-space: nowrap; width: 90px; }
+.doc-sheet .pr-hist .pr-work { color: #555; font-size: 9.5pt; margin-top: 2px; }
+.doc-sheet .pr-sumrow { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 4px 0 0; font-size: 10pt; }
+.doc-sheet .pr-sumrow b { color: var(--pr-color); }
 @media (max-width: 600px) {
   .doc-sheet { padding: 18px 14px; font-size: 10pt; }
   .doc-sheet .pr-head { flex-direction: column; gap: 10px; }
@@ -83,11 +92,11 @@
           ${opts.stamp ? `<div class="pr-stamp">${u.esc(opts.stamp)}</div>` : ''}</div>
       </div>
       <div class="pr-parties">${opts.parties.map((p) => `<div><h4>${u.esc(p.heading)}</h4>${p.lines.filter(Boolean).map(u.esc).join('<br>')}${p.bold ? '<br><b>' + u.esc(p.bold) + '</b>' : ''}</div>`).join('')}</div>
-      <table class="pr-items"><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>
+      ${opts.bodyHTML != null ? opts.bodyHTML : `<table class="pr-items"><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>
         ${opts.lines.map((l) => `<tr><td>${u.esc(l.desc)}</td><td>${u.esc(l.qty)} ${u.esc(l.unit || '')}</td><td>${u.money(l.price, true)}</td><td>${u.money(l.total, true)}</td></tr>`).join('')}
         ${(opts.extraRows || []).map((x) => `<tr><td>${u.esc(x[0])}</td><td></td><td></td><td>${u.money(x[1], true)}</td></tr>`).join('')}
       </tbody></table>
-      <table class="pr-totals">${opts.totals.map((t) => `<tr class="${t[2] ? 'grand' : ''}"><td>${u.esc(t[0])}</td><td>${typeof t[1] === 'number' ? u.money(t[1], true) : u.esc(t[1])}</td></tr>`).join('')}</table>
+      <table class="pr-totals">${opts.totals.map((t) => `<tr class="${t[2] ? 'grand' : ''}"><td>${u.esc(t[0])}</td><td>${typeof t[1] === 'number' ? u.money(t[1], true) : u.esc(t[1])}</td></tr>`).join('')}</table>`}
       ${opts.pay && opts.pay.url ? `<div class="pr-pay"><b>${u.esc(opts.pay.label || 'Pay online')}</b><a href="${u.esc(opts.pay.url)}">${u.esc(opts.pay.url)}</a>${opts.pay.note ? '<span>' + u.esc(opts.pay.note) + '</span>' : ''}</div>` : ''}
       ${opts.notes ? `<div class="pr-notes"><h4>Notes</h4><p>${u.esc(opts.notes).replace(/\n/g, '<br>')}</p></div>` : ''}
       ${opts.signature ? '<div class="pr-sign"><div>Accepted by ______________________________</div><div>Date ______________</div></div>' : ''}

@@ -172,6 +172,8 @@
         { title: 'Preview & send', say: 'Inside the invoice, Preview and send works just like estimates. The customer gets a View and pay button that opens their page with a Pay online link.' },
         { title: 'Square pay link and reminders', say: 'Create Square pay link makes a link for the exact balance. When it\'s paid, the invoice is marked paid by itself. For late invoices, Copy payment reminder writes a friendly reminder that includes the link.' },
         { title: 'Paid by check?', say: 'Record the payment in the invoice: amount, date, and method, or Paid in full. A paid invoice prints with a Paid stamp.' },
+        { title: 'Receipts', say: 'When an invoice is paid in full, the CRM asks if you want to send the receipt. Send receipt emails a receipt PDF showing every payment and a zero balance. Paid invoices without a receipt also wait under Send a receipt at the top of Invoices.' },
+        { title: 'Property history', say: 'On any client card, Property history shows every job we\'ve done at their property, year by year, with what they spent each year, photos, permits, and quotes they haven\'t done yet. Email to homeowner sends them a tidy PDF record for their home files.' },
       ],
       practice: ['Open Invoices and find "Ready to invoice".', 'Open a deal and find the Permit section.', 'Open any invoice and find Preview & send, Record payment, and Copy payment reminder.'],
       quiz: [

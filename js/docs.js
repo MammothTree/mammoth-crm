@@ -9,10 +9,12 @@
   const PDF_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
   const CHECK_EVERY = 2 * 60000;
   const TRACK_DAYS = 90;
-  const LABEL = { estimate: 'Estimate', invoice: 'Invoice' };
+  const LABEL = { estimate: 'Estimate', invoice: 'Invoice', receipt: 'Receipt' };
+  // Receipts are made from the invoice and sent as a PDF only: no customer page.
+  const hasPage = (type) => type !== 'receipt';
 
   const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
-  const list = (type) => (type === 'invoice' ? store.state.invoices : store.state.estimates);
+  const list = (type) => (type === 'estimate' ? store.state.estimates : store.state.invoices); // receipts are made from invoices
   const find = (type, id) => list(type).find((x) => x.id === id) || null;
 
   function injectCSS() {
@@ -111,6 +113,13 @@
 
     /** Records that it went out: status Sent, the deal moves along, and the activity log says how and to whom. */
     markSent(type, rec, via, to, confirmed) {
+      if (type === 'receipt') {
+        rec.receiptSends = (rec.receiptSends || []).concat({ via, to: to || '', at: new Date().toISOString(), confirmed: !!confirmed });
+        store.log('payment', 'Receipt for ' + rec.number + (via === 'email' ? ' emailed to ' : ' texted to ') + (to || store.customerName(rec.customerId)) + (confirmed ? '' : ' (you confirmed)'), { customerId: rec.customerId, dealId: rec.dealId });
+        docs.refreshDraft('invoice', rec);
+        store.save();
+        return;
+      }
       rec.sends = (rec.sends || []).concat({ via, to: to || '', at: new Date().toISOString(), confirmed: !!confirmed });
       if (rec.status === 'draft') { rec.status = 'sent'; rec.sentAt = u.todayISO(); }
       if (type === 'estimate') {
@@ -125,12 +134,12 @@
     /** Keeps an open editor in step with changes made here (so saving the editor doesn't undo them). */
     refreshDraft(type, rec) {
       const v = type === 'estimate' ? MT.views.estimator : MT.views.invoices;
-      if (v && v.draft && v.draft.id === rec.id) ['status', 'sentAt', 'share', 'sends', 'track', 'changesRequested', 'payLink', 'approvedBy'].forEach((k) => { if (rec[k] !== undefined) v.draft[k] = JSON.parse(JSON.stringify(rec[k])); });
+      if (v && v.draft && v.draft.id === rec.id) ['status', 'sentAt', 'share', 'sends', 'track', 'changesRequested', 'payLink', 'approvedBy', 'receiptSends'].forEach((k) => { if (rec[k] !== undefined) v.draft[k] = JSON.parse(JSON.stringify(rec[k])); });
     },
     /** Fields this module owns; editors copy them from the saved record before saving. */
     keep(rec, stored) {
       if (!stored) return;
-      ['share', 'sends', 'track', 'changesRequested', 'approvedBy'].forEach((k) => { if (stored[k] !== undefined) rec[k] = stored[k]; });
+      ['share', 'sends', 'track', 'changesRequested', 'approvedBy', 'receiptSends', 'receiptSkip'].forEach((k) => { if (stored[k] !== undefined) rec[k] = stored[k]; });
       if (stored.status === 'accepted' && stored.track && stored.track.approvedAt && rec.status === 'sent') rec.status = 'accepted';
     },
 
@@ -143,17 +152,19 @@
         rec.date = u.todayISO();
         rec.dueDate = u.addDays(rec.date, u.num(store.state.settings.paymentTermsDays) || 15);
         store.save(true);
-        docs.refreshDraft(type, rec);
+        const v = MT.views.invoices;
+        if (v && v.draft && v.draft.id === rec.id) { v.draft.date = rec.date; v.draft.dueDate = rec.dueDate; }
       }
       injectCSS();
       const info = docs.info(type, rec);
-      const live = docs.ready();
+      const live = docs.ready() && hasPage(type);
       ui.modal({
         title: LABEL[type] + ' ' + rec.number + ' preview',
         size: 'lg',
         body: `<div class="doc-preview"><div class="doc-sheet" style="--pr-color:${u.esc(MT.docColor())}">${MT.docHTML(info.opts)}</div></div>
-          <div class="doc-sendinfo">${docs.trackHTML(type, rec) || ''}
-          <p class="hint">${live ? 'Email goes out from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + ' with the PDF attached and a link where the customer can ' + (type === 'estimate' ? 'approve, ask for changes, or pay the deposit' : 'pay online or ask a question') + '. You\'ll see here when they open it.' : 'To email straight from the CRM, show the customer an approval page, and see when they open it, set up the connector in Integrations → Square &amp; online estimates. Until then, Send by email opens Gmail with the message ready.'}</p></div>`,
+          <div class="doc-sendinfo">${hasPage(type) ? docs.trackHTML(type, rec) || '' : ''}
+          ${type === 'receipt' ? docs.receiptSentHTML(rec) : ''}
+          <p class="hint">${type === 'receipt' ? (docs.ready() ? 'Email goes out from your Gmail with the receipt PDF attached.' : 'Send by email opens Gmail with the message ready; attach the PDF it downloads.') : live ? 'Email goes out from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + ' with the PDF attached and a link where the customer can ' + (type === 'estimate' ? 'approve, ask for changes, or pay the deposit' : 'pay online or ask a question') + '. You\'ll see here when they open it.' : 'To email straight from the CRM, show the customer an approval page, and see when they open it, set up the connector in Integrations → Square &amp; online estimates. Until then, Send by email opens Gmail with the message ready.'}</p></div>`,
         actions: [
           { label: 'Print / save PDF', kind: 'ghost', left: true, keepOpen: true, onClick: () => MT.printDoc(info.opts) },
           { label: 'Download PDF', kind: 'ghost', keepOpen: true, onClick: async (b) => {
@@ -185,6 +196,14 @@
           button: 'View & approve estimate',
         };
       }
+      if (type === 'receipt') {
+        return {
+          subject: 'Your receipt from ' + co.name + ': ' + info.title,
+          body: `Hi ${first},\n\nThank you for your payment! Your receipt for "${info.title}" is attached: ${u.money(info.paid, true)} received${info.balance > 0.005 ? ', ' + u.money(info.balance, true) + ' still due' : ', paid in full'}.\n\nPlease keep it for your records. Questions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`,
+          sms: `Hi ${first}, it's ${co.owner} with ${co.name}. Thank you for your payment of ${u.money(info.paid, true)} for "${info.title}"${info.balance > 0.005 ? '' : '. You\'re paid in full'}. Your receipt is attached.`,
+          button: '',
+        };
+      }
       return {
         subject: 'Invoice ' + rec.number + ' from ' + co.name,
         body: `Hi ${first},\n\nThank you for your business! Invoice ${rec.number} for "${info.title}" is attached. Balance due: ${u.money(info.balance, true)}${rec.dueDate ? ' by ' + u.fmtDate(rec.dueDate) : ''}.\n\n${url ? 'You can view it and pay online using the button below.' : info.payUrl ? 'Pay online here: ' + info.payUrl : ''}\n\nQuestions? Call ${co.phone}.\n\nThank you,\n${co.owner}\n${co.name}`,
@@ -199,7 +218,8 @@
       const c = store.customer(rec.customerId) || {};
       const co = store.state.settings.company;
       const live = docs.ready();
-      const m = docs.messages(type, rec, docs.info(type, rec), live ? 'link' : '');
+      const page = live && hasPage(type);
+      const m = docs.messages(type, rec, docs.info(type, rec), page ? 'link' : '');
       ui.modal({
         title: 'Email ' + LABEL[type].toLowerCase() + ' ' + rec.number,
         body: `<div class="form-grid">
@@ -208,7 +228,7 @@
             <label class="field span-2"><span>Message</span><textarea class="input" rows="9" id="em-body">${u.esc(m.body)}</textarea></label>
             <label class="check span-2"><input type="checkbox" id="em-pdf" checked><span>Attach the PDF</span></label>
           </div>
-          <p class="hint">${live ? 'Sends from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + (co.email ? '; replies go to ' + u.esc(co.email) : '') + '. A button to the customer\'s page is added below your message.' : 'Opens Gmail with this message. On a phone you pick Gmail from the share menu and the PDF is attached for you; on a computer the PDF downloads so you can attach it in Gmail.'}</p>
+          <p class="hint">${live ? 'Sends from your Gmail' + (MT.mail.from() ? ' (' + u.esc(MT.mail.from()) + ')' : '') + (co.email ? '; replies go to ' + u.esc(co.email) : '') + (page ? '. A button to the customer\'s page is added below your message.' : '.') : 'Opens Gmail with this message. On a phone you pick Gmail from the share menu and the PDF is attached for you; on a computer the PDF downloads so you can attach it in Gmail.'}</p>
           <p class="hint" id="em-status"></p>`,
         actions: [
           { label: 'Cancel' },
@@ -230,12 +250,13 @@
               const attach = u.qs('#em-pdf', b).checked;
               const subject = u.qs('#em-subj', b).value.trim(), body = u.qs('#em-body', b).value;
               if (live) {
-                say('Putting it on the customer\'s page…');
-                const url = await docs.publish(type, rec, info);
+                let url = '';
+                if (page) { say('Putting it on the customer\'s page…'); url = await docs.publish(type, rec, info); }
                 let pdf = '';
                 if (attach) { say('Making the PDF…'); const blob = await docs.pdf(info.opts, docs.filename(type, rec)); if (blob) pdf = await docs.toBase64(blob); }
+                if (!page && attach && !pdf) throw new Error('Couldn\'t make the PDF here. Check your internet connection and try again.');
                 say('Sending…');
-                const r = await MT.mail.send({ to, subject, body, url, button: docs.messages(type, rec, info, url).button, pdf, filename: docs.filename(type, rec), token: rec.share.token });
+                const r = await MT.mail.send({ to, subject, body, url, button: url ? docs.messages(type, rec, info, url).button : '', pdf, filename: docs.filename(type, rec), token: page ? rec.share.token : '' });
                 docs.markSent(type, rec, 'email', r.to || to, true);
                 close();
                 ui.toast('Sent from Gmail to ' + to + (attach && !pdf ? ' (without the PDF; the link has everything)' : ''));
@@ -267,7 +288,7 @@
     textForm(type, id) {
       const rec = find(type, id);
       const c = store.customer(rec.customerId) || {};
-      const live = docs.ready();
+      const live = docs.ready() && hasPage(type);
       const info0 = docs.info(type, rec);
       const m = docs.messages(type, rec, info0, live ? '[link]' : '');
       ui.modal({
@@ -276,7 +297,7 @@
             <label class="field span-2"><span>To (mobile number)</span><input class="input" type="tel" id="tx-to" value="${u.esc(c.phone || '')}"></label>
             <label class="field span-2"><span>Message</span><textarea class="input" rows="5" id="tx-body">${u.esc(m.sms)}</textarea></label>
           </div>
-          <p class="hint">${live ? '[link] becomes the customer\'s private page, where they can ' + (type === 'estimate' ? 'view, approve, or ask for changes' : 'view and pay') + '. Your messages app opens with the text ready. Tap send there.' : 'On a phone, the PDF is attached in your messages app. Set up the connector (Integrations) to send a view-and-approve link instead.'}</p>`,
+          <p class="hint">${live ? '[link] becomes the customer\'s private page, where they can ' + (type === 'estimate' ? 'view, approve, or ask for changes' : 'view and pay') + '. Your messages app opens with the text ready. Tap send there.' : type === 'receipt' ? 'On a phone, the receipt PDF is attached in your messages app.' : 'On a phone, the PDF is attached in your messages app. Set up the connector (Integrations) to send a view-and-approve link instead.'}</p>`,
         actions: [
           { label: 'Cancel' },
           { label: 'Open messages', kind: 'primary', keepOpen: true, onClick: async (b, close) => {
@@ -291,7 +312,7 @@
               } else {
                 const blob = await docs.pdf(info.opts, docs.filename(type, rec));
                 const file = blob ? new File([blob], docs.filename(type, rec), { type: 'application/pdf' }) : null;
-                if (file && navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], text: body });
+                if (file && MT.mail.phone() && navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], text: body });
                 else window.location.href = 'sms:' + encodeURIComponent(to) + '?&body=' + encodeURIComponent(body);
               }
               close();
@@ -310,7 +331,7 @@
       setTimeout(() => ui.modal({
         title: via === 'sms' ? 'Did the text go out?' : 'Did the email go out?',
         size: 'sm',
-        body: `<p>Tap <b>Yes</b> once you've sent it to ${u.esc(to || store.customerName(rec.customerId))}. The ${LABEL[type].toLowerCase()} is then marked as sent${docs.ready() ? ', and you\'ll see here when they open it' : ''}.</p>`,
+        body: `<p>Tap <b>Yes</b> once you've sent it to ${u.esc(to || store.customerName(rec.customerId))}. The ${LABEL[type].toLowerCase()} is then marked as sent${docs.ready() && hasPage(type) ? ', and you\'ll see here when they open it' : ''}.</p>`,
         actions: [{ label: 'Not sent' }, { label: 'Yes, it went out', kind: 'primary', onClick: () => { docs.markSent(type, rec, via, to, false); ui.toast(LABEL[type] + ' ' + rec.number + ' marked as sent by ' + (via === 'sms' ? 'text' : 'email')); } }],
       }), 600);
     },
@@ -333,6 +354,12 @@
         ${rec.changesRequested ? '<p class="doc-alert">The customer asked for changes. Update the ' + LABEL[type].toLowerCase() + ' and send it again: the same link shows the new version.</p>' : ''}
         <ul>${rows.map((r) => `<li><span class="muted">${fmtWhen(r.at)}</span> ${r.html}</li>`).join('')}</ul>
       </div>`;
+    },
+    /** When receipts for this invoice went out. */
+    receiptSentHTML(rec) {
+      const xs = (rec && rec.receiptSends) || [];
+      if (!xs.length) return '';
+      return `<div class="doc-track"><h4>Receipt sent</h4><ul>${xs.map((x) => `<li><span class="muted">${fmtWhen(x.at)}</span> ${x.via === 'email' ? 'Emailed' : 'Texted'} to ${u.esc(x.to || 'customer')}${x.confirmed ? ' <span class="good-tx">sent</span>' : ' <span class="muted">(you confirmed)</span>'}</li>`).join('')}</ul></div>`;
     },
     /** Short status for lists. */
     badge(rec) {

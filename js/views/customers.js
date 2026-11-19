@@ -95,6 +95,7 @@
     const acts = s.activities.filter((a) => a.customerId === id).slice(0, 10);
     const invs = s.invoices.filter((x) => x.customerId === id).sort((a, b) => (a.date < b.date ? 1 : -1));
     const stageKind = { won: 'good', lost: 'bad' };
+    const hist = MT.history.byYear(MT.history.jobs(id));
     ui.modal({
       title: c.name,
       size: 'lg',
@@ -108,12 +109,14 @@
           </div>
           <div class="cust-ltv"><div class="stat-label">Lifetime value</div><div class="stat-value sm">${u.money(calc.lifetimeValue(s, id))}</div></div>
         </div>
+        ${hist.length ? `<button class="hist-strip" data-go="history" type="button"><span class="hist-strip-l">Spent by year</span>${hist.slice(0, 5).map((y) => `<span><b>${u.esc(y.year)}</b> ${u.money(y.paid)}</span>`).join('')}<span class="link">Full property history</span></button>` : ''}
         ${c.notes ? '<div class="note">' + u.esc(c.notes) + '</div>' : ''}
         <div class="btn-row">
           <button class="btn ghost sm" data-go="deal">New deal</button>
           <button class="btn ghost sm" data-go="estimate">New estimate</button>
           <button class="btn ghost sm" data-go="template">Send a template</button>
           <button class="btn ghost sm" data-go="jobcam">Job photos</button>
+          <button class="btn ghost sm" data-go="history">Property history</button>
           <button class="btn ghost sm" data-go="edit">Edit details</button>
         </div>
         <h4 class="sub-h">Deals & jobs</h4>
@@ -139,6 +142,7 @@
           if (g === 'template') MT.app.go('templates', { customerId: id });
           if (g === 'jobcam') MT.app.go('jobcam', { customerId: id });
           if (g === 'edit') view.edit(id);
+          if (g === 'history') MT.history.open(id);
         }));
         const add = () => {
           const inp = u.qs('#cu-note', b);

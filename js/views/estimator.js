@@ -273,6 +273,7 @@
         ${e.status === 'sent' ? '<button class="btn good" data-act="accept">Customer accepted</button><button class="btn ghost" data-act="decline">Customer declined</button>' : ''}
         ${dep.amount && (e.status === 'sent' || e.status === 'accepted') ? '<button class="btn ghost" data-act="deposit">Request the deposit</button>' : ''}
         <button class="btn" data-act="preview">Preview &amp; send</button>
+        ${e.status === 'accepted' && e.dealId ? `<button class="btn good" data-act="invoice">${store.invoicesFor(e.dealId).some((x) => x.status !== 'void') ? 'Open the invoice' : 'Turn into an invoice'}</button>` : ''}
         ${!view.isNew ? '<button class="btn ghost" data-act="dup">Duplicate</button>' : ''}
         <button class="btn ghost" data-act="new">Start a new estimate</button>
         ${!view.isNew ? '<button class="btn danger-ghost" data-act="del">Delete estimate</button>' : ''}
@@ -332,6 +333,11 @@
     else if (act === 'print') { if (validate(e)) printEstimate(e); }
     else if (act === 'preview') { if (commit()) MT.docs.open('estimate', e.id); }
     else if (act === 'deposit') { if (commit()) depositRequest(e); }
+    else if (act === 'invoice') {
+      if (!commit()) return;
+      const inv = store.invoicesFor(e.dealId).find((x) => x.status !== 'void');
+      MT.app.go('invoices', inv ? { id: inv.id } : { dealId: e.dealId });
+    }
     else if (act === 'dup') {
       view.draft = Object.assign(JSON.parse(JSON.stringify(e)), { id: u.uid('e'), number: '', status: 'draft', sentAt: '', date: u.todayISO(), dealId: '' });
       view.isNew = true;
