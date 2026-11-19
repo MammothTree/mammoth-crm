@@ -593,6 +593,10 @@ mark { background: var(--warn-soft); color: var(--warn); border-radius: 3px; pad
 #bk-square .sum-lines { max-width: 440px; margin: 10px 0; }
 #bk-square .bullets { margin: 6px 0 12px; }
 #bk-square .field { max-width: 360px; }
+.fx-confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 10000; }
+#st-fx .check { margin: 4px 0; }
+#st-fx .field { max-width: 280px; margin-top: 8px; }
+.fx-try { margin-top: 10px; }
 /* Property history */
 .hist-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; width: 100%; margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2, transparent); font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .hist-strip:hover { border-color: var(--canopy); }

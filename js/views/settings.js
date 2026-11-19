@@ -14,6 +14,7 @@
     const st = s.settings;
     const pin = MT.lock.isSet();
     const restore = store.restorePoint();
+    const fx = MT.fx.cfg();
     root.innerHTML = `
       <div class="settings">
         <section class="panel">
@@ -46,6 +47,16 @@
             <label class="field"><span>Lock after (minutes of no activity)</span><input class="input" type="number" min="1" max="240" id="lock-min" value="${u.esc(st.lockMinutes || 15)}"></label>
           </div>
           <div class="btn-row"><button class="btn primary" id="pin-set">${pin ? 'Change PIN' : 'Turn on PIN lock'}</button>${pin ? '<button class="btn ghost" id="pin-lock">Lock now</button><button class="btn danger-ghost" id="pin-off">Turn off PIN</button>' : ''}</div>
+        </section>
+
+        <section class="panel" id="st-fx">
+          <div class="panel-head"><h3>Sounds &amp; celebrations</h3><span class="hint">This device only</span></div>
+          <p class="hint">Little sounds for what happens in the CRM, and confetti when an estimate is approved or a job is won. Each kind of event has its own sound.</p>
+          <label class="check"><input type="checkbox" data-fx="sounds" ${fx.sounds ? 'checked' : ''}><span>Sounds</span></label>
+          <label class="check"><input type="checkbox" data-fx="scroll" ${fx.scroll ? 'checked' : ''}><span>Soft tick while scrolling</span></label>
+          <label class="check"><input type="checkbox" data-fx="confetti" ${fx.confetti ? 'checked' : ''}><span>Confetti for approvals and wins</span></label>
+          <label class="field"><span>Volume</span><input type="range" min="0.05" max="1" step="0.05" id="fx-vol" value="${fx.volume}"></label>
+          <div class="chips fx-try"><span class="chips-label">Try:</span>${[['win', 'Estimate approved'], ['coin', 'Payment'], ['pop', 'Invoice created'], ['send', 'Sent'], ['ping', 'New lead or client'], ['shutter', 'Job photos'], ['calendar', 'Scheduled'], ['clock', 'Time tracked'], ['blip', 'Note'], ['bonk', 'Something went wrong']].map((x) => `<button class="chip" data-fxtry="${x[0]}">${x[1]}</button>`).join('')}</div>
         </section>
 
         <section class="panel span-all">
@@ -87,6 +98,11 @@
           </div>
         </section>
       </div>`;
+
+    // Sounds & celebrations (saved on this device)
+    u.qsa('[data-fx]', root).forEach((cb) => cb.addEventListener('change', () => { MT.fx.set({ [cb.dataset.fx]: cb.checked }); if (cb.checked && cb.dataset.fx === 'sounds') MT.fx.play('ping'); }));
+    u.qs('#fx-vol', root).addEventListener('change', (e) => { MT.fx.set({ volume: +e.target.value }); MT.fx.play('ping'); });
+    u.qsa('[data-fxtry]', root).forEach((b) => b.addEventListener('click', () => { const n = b.dataset.fxtry; MT.fx.play(n); if (n === 'win') MT.fx.confetti(140); if (n === 'coin') MT.fx.confetti(45); }));
 
     // Defaults autosave
     u.qsa('#st-def [name]', root).forEach((inp) => inp.addEventListener('input', () => {
